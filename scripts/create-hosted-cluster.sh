@@ -80,7 +80,7 @@ hcp create cluster aws \
     --name "$CLUSTER_NAME" \
     --infra-id "$INFRA_ID" \
     --base-domain "$BASE_DOMAIN" \
-    --sts-creds "$PROJECT_DIR/tmp/sts-creds.json" \
+    --sts-creds "$PROJECT_DIR/sts-creds.json" \
     --pull-secret "$PROJECT_DIR/$PULL_SECRET_FILE" \
     --region "$REGION" \
     --zones "$ZONES" \

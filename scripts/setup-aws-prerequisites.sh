@@ -68,9 +68,10 @@ aws s3api put-bucket-policy --bucket "$BUCKET_NAME" --policy file://"$PROJECT_DI
 # Step 5: Create credentials file from AWS credentials
 echo "🔑 Creating credentials file for secret..."
 
-# Ensure AWS credentials are available
+# Ensure AWS credentials are available and properly set
+# First, verify if they're already set from setup-aws-credentials.sh
 if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
-    echo "❌ Error: AWS credentials not found in environment variables"
+    echo "   AWS credentials not found in environment variables"
     echo "   Loading from aws-credentials.env..."
     if [ -f "$PROJECT_DIR/aws-credentials.env" ]; then
         source "$PROJECT_DIR/aws-credentials.env"
@@ -82,9 +83,31 @@ if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
     fi
 fi
 
+# Validate that credentials are actually set and not empty
+if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+    echo "❌ Error: AWS credentials are empty or not set"
+    echo "   Please verify your aws-credentials.env file contains:"
+    echo "   AWS_ACCESS_KEY_ID=your-access-key"
+    echo "   AWS_SECRET_ACCESS_KEY=your-secret-key"
+    exit 1
+fi
+
+# Remove any whitespace that might have been accidentally included
+AWS_ACCESS_KEY_ID=$(echo "$AWS_ACCESS_KEY_ID" | xargs)
+AWS_SECRET_ACCESS_KEY=$(echo "$AWS_SECRET_ACCESS_KEY" | xargs)
+
+# Additional validation: check that values are not empty after trimming
+if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+    echo "❌ Error: AWS credentials are empty after processing"
+    exit 1
+fi
+
+echo "   ✅ AWS credentials validated"
+
 # Create tmp directory if it doesn't exist
 mkdir -p "$PROJECT_DIR/tmp"
 
+# Create the credentials file with the validated values
 cat > "$PROJECT_DIR/tmp/credentials" <<EOF
 [default]
 aws_access_key_id=${AWS_ACCESS_KEY_ID}
@@ -97,7 +120,23 @@ if [ ! -f "$PROJECT_DIR/tmp/credentials" ] || [ ! -s "$PROJECT_DIR/tmp/credentia
     exit 1
 fi
 
-echo "   ✅ Credentials file created at $PROJECT_DIR/tmp/credentials"
+# Verify that the credentials file actually contains values (not just keys with empty values)
+if ! grep -q "aws_access_key_id=.\+" "$PROJECT_DIR/tmp/credentials" || ! grep -q "aws_secret_access_key=.\+" "$PROJECT_DIR/tmp/credentials"; then
+    echo "❌ Error: Credentials file was created but values are missing!"
+    echo "   File contents:"
+    cat "$PROJECT_DIR/tmp/credentials"
+    exit 1
+fi
+
+# Additional check: ensure the values are not just empty strings
+if grep -q "aws_access_key_id=$" "$PROJECT_DIR/tmp/credentials" || grep -q "aws_secret_access_key=$" "$PROJECT_DIR/tmp/credentials"; then
+    echo "❌ Error: Credentials file contains empty values!"
+    echo "   File contents:"
+    cat "$PROJECT_DIR/tmp/credentials"
+    exit 1
+fi
+
+echo "   ✅ Credentials file created at $PROJECT_DIR/tmp/credentials with valid values"
 
 # Step 6: Get kubeconfig
 # Use current working directory
