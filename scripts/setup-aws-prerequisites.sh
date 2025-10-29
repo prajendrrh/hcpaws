@@ -18,10 +18,8 @@ if [ ! -f "$PROJECT_DIR/aws-credentials.env" ]; then
     exit 1
 fi
 
-# Source AWS credentials
-source "$PROJECT_DIR/aws-credentials.env"
-export AWS_ACCESS_KEY_ID
-export AWS_SECRET_ACCESS_KEY
+# Setup AWS credentials in ~/.aws/credentials and ~/.aws/config
+bash "$SCRIPT_DIR/setup-aws-credentials.sh"
 
 # Read config values
 BUCKET_NAME=$(yq eval '.hosted_cluster.s3_bucket.name' "$PROJECT_DIR/config.yaml")
