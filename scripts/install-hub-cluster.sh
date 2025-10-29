@@ -73,21 +73,11 @@ else
     openshift-install create cluster --dir . --log-level debug > "$INSTALL_LOG" 2>&1 &
     INSTALL_PID=$!
     
-    # Show periodic status updates with dots and messages
-    COUNTER=0
-    echo -n "   Installing"
+    # Show periodic status updates
     while kill -0 $INSTALL_PID 2>/dev/null; do
         sleep 60
-        COUNTER=$((COUNTER + 1))
-        echo -n "."
-        # Show message every 5 minutes
-        if [ $((COUNTER % 5)) -eq 0 ]; then
-            echo ""
-            echo "   Still installing... ($((COUNTER)) minutes elapsed - check $INSTALL_LOG for details)"
-            echo -n "   Installing"
-        fi
+        echo "   Still installing... (check $INSTALL_LOG for details)"
     done
-    echo ""
     wait $INSTALL_PID
     EXIT_CODE=$?
 fi
