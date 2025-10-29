@@ -356,9 +356,26 @@ aws iam put-role-policy \
 
 # Step 11: Get STS session token
 echo "🎫 Getting STS session token..."
-aws sts get-session-token --output json > "$PROJECT_DIR/tmp/sts-creds.json"
+
+# Get pull secret file path to determine where to save sts-creds.json (same directory)
+PULL_SECRET_FILE=$(yq eval '.hub_cluster.pull_secret_file' "$PROJECT_DIR/config.yaml" 2>/dev/null || echo "")
+if [ -n "$PULL_SECRET_FILE" ] && [ -f "$PROJECT_DIR/$PULL_SECRET_FILE" ]; then
+    # Use the same directory as pull secret
+    PULL_SECRET_DIR=$(dirname "$PROJECT_DIR/$PULL_SECRET_FILE")
+    STS_CREDS_FILE="$PULL_SECRET_DIR/sts-creds.json"
+    echo "   Saving STS credentials to same directory as pull secret: $STS_CREDS_FILE"
+else
+    # Fallback to tmp directory if pull secret path not found
+    STS_CREDS_FILE="$PROJECT_DIR/tmp/sts-creds.json"
+    echo "   Warning: Pull secret file not found in config, using default location: $STS_CREDS_FILE"
+fi
+
+# Create directory if it doesn't exist
+mkdir -p "$(dirname "$STS_CREDS_FILE")"
+
+aws sts get-session-token --output json > "$STS_CREDS_FILE"
 
 echo "✅ AWS prerequisites setup completed!"
 echo "📝 Role ARN saved: $ROLE_ARN"
-echo "📝 STS credentials saved to: $PROJECT_DIR/tmp/sts-creds.json"
+echo "📝 STS credentials saved to: $STS_CREDS_FILE"
 

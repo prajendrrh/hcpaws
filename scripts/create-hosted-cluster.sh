@@ -53,15 +53,22 @@ if ! ROLE_ARN=$(aws iam get-role --role-name "$IAM_ROLE_NAME" --query "Role.Arn"
 fi
 echo "  Role ARN: $ROLE_ARN"
 
-# Check for required files
-if [ ! -f "$PROJECT_DIR/tmp/sts-creds.json" ]; then
-    echo "Error: sts-creds.json not found. Please run setup-aws-prerequisites.sh first."
-    exit 1
-fi
-
+# Get pull secret file path first to determine sts-creds.json location
 PULL_SECRET_FILE=$(yq eval '.hub_cluster.pull_secret_file' "$PROJECT_DIR/config.yaml")
 if [ ! -f "$PROJECT_DIR/$PULL_SECRET_FILE" ]; then
     echo "Error: Pull secret file not found: $PROJECT_DIR/$PULL_SECRET_FILE"
+    exit 1
+fi
+
+# Get the directory where pull secret is located - sts-creds.json should be in the same directory
+PULL_SECRET_DIR=$(dirname "$PROJECT_DIR/$PULL_SECRET_FILE")
+STS_CREDS_FILE="$PULL_SECRET_DIR/sts-creds.json"
+
+# Check for required files
+if [ ! -f "$STS_CREDS_FILE" ]; then
+    echo "Error: sts-creds.json not found at $STS_CREDS_FILE"
+    echo "   Expected location: same directory as pull secret ($PULL_SECRET_DIR)"
+    echo "   Please run setup-aws-prerequisites.sh first."
     exit 1
 fi
 
@@ -80,7 +87,7 @@ hcp create cluster aws \
     --name "$CLUSTER_NAME" \
     --infra-id "$INFRA_ID" \
     --base-domain "$BASE_DOMAIN" \
-    --sts-creds "$PROJECT_DIR/sts-creds.json" \
+    --sts-creds "$STS_CREDS_FILE" \
     --pull-secret "$PROJECT_DIR/$PULL_SECRET_FILE" \
     --region "$REGION" \
     --zones "$ZONES" \
