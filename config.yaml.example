@@ -1,0 +1,49 @@
+# OpenShift Management Cluster Configuration
+# Copy this file to config.yaml and fill in your values
+
+hub_cluster:
+  name: "my-hub-cluster"
+  base_domain: "example.com"
+  region: "eu-west-1"
+  zones:
+    - "eu-west-1a"
+    - "eu-west-1b"
+    - "eu-west-1c"
+  pull_secret_file: "pull-secret.txt"
+  openshift_version: "4.19"
+  compute:
+    instance_type: "m6i.8xlarge"
+    replicas: 3
+    architecture: "amd64"
+    hyperthreading: "Enabled"
+  control_plane:
+    replicas: 3
+    architecture: "amd64"
+    hyperthreading: "Enabled"
+  networking:
+    cluster_network_cidr: "10.128.0.0/14"
+    host_prefix: 23
+    machine_network_cidr: "172.18.0.0/16"
+    service_network_cidr: "172.30.0.0/16"
+    network_type: "OVNKubernetes"
+  platform:
+    publish: "External"
+    additional_trust_bundle_policy: "Proxyonly"
+
+hosted_cluster:
+  name: "my-hosted-cluster"
+  infra_id: "my-hosted-cluster"
+  base_domain: "example.com"
+  region: "eu-west-2"
+  zones: "eu-west-2a,eu-west-2b,eu-west-2c"
+  node_pool_replicas: 1
+  namespace: "my-hosted-cluster"
+  release_image: "quay.io/openshift-release-dev/ocp-release:4.19.0-x86_64"
+  s3_bucket:
+    name: "my-hcp-bucket"
+
+aws:
+  credentials_file: "aws-credentials.env"
+  iam_role:
+    name: "hcp-cli-role"
+

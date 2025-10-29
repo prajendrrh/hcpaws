@@ -1,0 +1,35 @@
+# Secrets and credentials
+*.env
+aws-credentials.env
+pull-secret.txt
+config.yaml
+sts-creds.json
+credentials
+policy.json
+iam_role.json
+hcp_policy.json
+
+# OpenShift installation artifacts
+auth/
+metadata.json
+.openshift_install.log
+.openshift_install_state.json
+terraform.tfstate*
+*.tfvars
+
+# Cluster installation directory
+installer/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
