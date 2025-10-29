@@ -69,7 +69,33 @@ echo ""
 
 # Step 6: Setup AWS prerequisites for hosted cluster
 echo "Step 6: Setting up AWS prerequisites for hosted cluster..."
-bash scripts/setup-aws-prerequisites.sh || exit 1
+
+# Note: setup-aws-prerequisites.sh needs to be run from the directory where kubeconfig is located
+# The kubeconfig should be in the installer directory from Step 3
+# We need to determine where the installation happened
+if [ -f "installer/auth/kubeconfig" ]; then
+    # If running from repo root and installer directory exists here
+    WORK_DIR="$SCRIPT_DIR/installer"
+elif [ -f "auth/kubeconfig" ]; then
+    # If already in the installer directory
+    WORK_DIR="."
+else
+    # Try to find kubeconfig in current directory or common locations
+    if [ -f "$PWD/auth/kubeconfig" ]; then
+        WORK_DIR="$PWD"
+    else
+        echo "⚠️  Warning: Could not find kubeconfig automatically."
+        echo "   Please ensure you're running from the directory where the cluster was installed,"
+        echo "   or that auth/kubeconfig exists in the installer/ subdirectory."
+        echo ""
+        echo "   Attempting to continue anyway..."
+        WORK_DIR="${PWD}"
+    fi
+fi
+
+cd "$WORK_DIR" || echo "Warning: Could not change to $WORK_DIR, continuing from current directory..."
+bash "$SCRIPT_DIR/scripts/setup-aws-prerequisites.sh" || exit 1
+cd "$SCRIPT_DIR" || true
 echo ""
 
 # Step 7: Create hosted cluster
