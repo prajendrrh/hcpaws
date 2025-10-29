@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Note: This script can be sourced (source setup-aws-credentials.sh) or executed (bash setup-aws-credentials.sh)
+# When sourced, environment variables will persist in the parent shell
+
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,10 +48,20 @@ output = json
 EOF
 
 # Export environment variables as well (for tools that use them)
+# These are critical for openshift-install to work without prompts
 export AWS_ACCESS_KEY_ID
 export AWS_SECRET_ACCESS_KEY
 export AWS_DEFAULT_REGION="${AWS_REGION}"
+export AWS_REGION="${AWS_REGION}"
+export AWS_SDK_LOAD_CONFIG=1
+
+# Verify credentials were loaded
+if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+    echo "❌ Error: Failed to load AWS credentials from aws-credentials.env"
+    exit 1
+fi
 
 echo "✅ AWS credentials configured in ~/.aws/credentials and ~/.aws/config"
 echo "✅ AWS region set to: ${AWS_REGION}"
+echo "✅ Environment variables exported (AWS_ACCESS_KEY_ID is set)"
 
