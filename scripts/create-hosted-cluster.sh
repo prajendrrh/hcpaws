@@ -14,9 +14,14 @@ if [ ! -f "$PROJECT_DIR/config.yaml" ]; then
 fi
 
 # Setup AWS credentials in ~/.aws/credentials and ~/.aws/config
+# Source instead of bash to preserve environment variables
 if [ -f "$PROJECT_DIR/aws-credentials.env" ]; then
-    bash "$SCRIPT_DIR/setup-aws-credentials.sh"
+    source "$SCRIPT_DIR/setup-aws-credentials.sh"
 fi
+
+# Ensure AWS profile is set to default and export it
+export AWS_PROFILE=default
+export AWS_DEFAULT_PROFILE=default
 
 # Read config values using yq
 CLUSTER_NAME=$(yq eval '.hosted_cluster.name' "$PROJECT_DIR/config.yaml")
@@ -31,7 +36,21 @@ IAM_ROLE_NAME=$(yq eval '.aws.iam_role.name' "$PROJECT_DIR/config.yaml")
 
 # Get IAM role ARN
 echo "🔍 Getting IAM role ARN..."
-ROLE_ARN=$(aws iam get-role --role-name "$IAM_ROLE_NAME" --query "Role.Arn" --output text)
+if ! ROLE_ARN=$(aws iam get-role --role-name "$IAM_ROLE_NAME" --query "Role.Arn" --output text 2>&1); then
+    echo "❌ Error: IAM role '$IAM_ROLE_NAME' does not exist!"
+    echo ""
+    echo "   The AWS prerequisites have not been set up yet."
+    echo "   Please run the setup-aws-prerequisites.sh script first:"
+    echo ""
+    echo "   bash $SCRIPT_DIR/setup-aws-prerequisites.sh"
+    echo ""
+    echo "   This script will create:"
+    echo "   - S3 bucket for OIDC provider"
+    echo "   - IAM role ($IAM_ROLE_NAME) with necessary permissions"
+    echo "   - STS session credentials"
+    echo ""
+    exit 1
+fi
 echo "  Role ARN: $ROLE_ARN"
 
 # Check for required files
