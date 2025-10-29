@@ -65,7 +65,7 @@ EOF
 echo "📋 Applying bucket policy..."
 aws s3api put-bucket-policy --bucket "$BUCKET_NAME" --policy file://"$PROJECT_DIR/tmp/policy.json"
 
-好吃# Step 5: Create credentials file from AWS credentials
+# Step 5: Create credentials file from AWS credentials
 echo "🔑 Creating credentials file for secret..."
 
 # Ensure AWS credentials are available
