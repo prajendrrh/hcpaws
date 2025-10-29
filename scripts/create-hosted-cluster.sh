@@ -66,7 +66,16 @@ if [ ! -f "$PROJECT_DIR/$PULL_SECRET_FILE" ]; then
 fi
 
 # Create hosted cluster
+# Use current working directory for log file
+WORK_DIR="${PWD:-$(pwd)}"
+HOSTED_CLUSTER_LOG="$WORK_DIR/hosted-cluster-creation.log"
+
 echo "⏳ Creating hosted cluster: $CLUSTER_NAME (this may take 15-20 minutes)..."
+echo "📝 Hosted cluster creation logs will be saved to: $HOSTED_CLUSTER_LOG"
+echo "   You can monitor progress with: tail -f $HOSTED_CLUSTER_LOG"
+echo -n "   Creating"
+
+# Run hcp command in background and redirect output to log file
 hcp create cluster aws \
     --name "$CLUSTER_NAME" \
     --infra-id "$INFRA_ID" \
@@ -79,7 +88,36 @@ hcp create cluster aws \
     --node-pool-replicas "$NODE_POOL_REPLICAS" \
     --namespace "$NAMESPACE" \
     --role-arn "$ROLE_ARN" \
-    --release-image "$RELEASE_IMAGE"
+    --release-image "$RELEASE_IMAGE" > "$HOSTED_CLUSTER_LOG" 2>&1 &
+HCP_PID=$!
+
+# Show progress while waiting
+COUNTER=0
+while kill -0 $HCP_PID 2>/dev/null; do
+    sleep 60
+    COUNTER=$((COUNTER + 1))
+    echo -n "."
+    # Show message every 5 minutes
+    if [ $((COUNTER % 5)) -eq 0 ]; then
+        echo ""
+        echo "   Still creating... ($((COUNTER)) minutes elapsed - check $HOSTED_CLUSTER_LOG for details)"
+        echo -n "   Creating"
+    fi
+done
+wait $HCP_PID
+EXIT_CODE=$?
+echo ""
+
+# Check if creation was successful
+if [ $EXIT_CODE -ne 0 ]; then
+    echo ""
+    echo "❌ Hosted cluster creation failed!"
+    echo "   Check the log file for details: $HOSTED_CLUSTER_LOG"
+    echo "   Last 50 lines of log:"
+    tail -50 "$HOSTED_CLUSTER_LOG"
+    exit $EXIT_CODE
+fi
 
 echo "✅ Hosted cluster creation completed!"
+echo "📝 Full creation log saved to: $HOSTED_CLUSTER_LOG"
 

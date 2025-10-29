@@ -146,7 +146,7 @@ ROLE_ARN=$(aws iam create-role \
 
 echo "  Role ARN: $ROLE_ARN"
 
-# Step 10: Create系统中的 IAM role policy
+# Step 10: Create IAM role policy
 echo "📋 Creating IAM role policy..."
 cat > "$PROJECT_DIR/tmp/hcp_policy.json" <<'POLICYEOF'
 {
