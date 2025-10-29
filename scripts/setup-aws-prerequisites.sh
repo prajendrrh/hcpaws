@@ -19,7 +19,8 @@ if [ ! -f "$PROJECT_DIR/aws-credentials.env" ]; then
 fi
 
 # Setup AWS credentials in ~/.aws/credentials and ~/.aws/config
-bash "$SCRIPT_DIR/setup-aws-credentials.sh"
+# Source it to preserve environment variables for use in this script
+source "$SCRIPT_DIR/setup-aws-credentials.sh"
 
 # Read config values
 BUCKET_NAME=$(yq eval '.hosted_cluster.s3_bucket.name' "$PROJECT_DIR/config.yaml")
@@ -64,13 +65,39 @@ EOF
 echo "📋 Applying bucket policy..."
 aws s3api put-bucket-policy --bucket "$BUCKET_NAME" --policy file://"$PROJECT_DIR/tmp/policy.json"
 
-# Step 5: Create credentials file from AWS credentials
+好吃# Step 5: Create credentials file from AWS credentials
 echo "🔑 Creating credentials file for secret..."
+
+# Ensure AWS credentials are available
+if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+    echo "❌ Error: AWS credentials not found in environment variables"
+    echo "   Loading from aws-credentials.env..."
+    if [ -f "$PROJECT_DIR/aws-credentials.env" ]; then
+        source "$PROJECT_DIR/aws-credentials.env"
+        export AWS_ACCESS_KEY_ID
+        export AWS_SECRET_ACCESS_KEY
+    else
+        echo "❌ Error: aws-credentials.env file not found at $PROJECT_DIR/aws-credentials.env"
+        exit 1
+    fi
+fi
+
+# Create tmp directory if it doesn't exist
+mkdir -p "$PROJECT_DIR/tmp"
+
 cat > "$PROJECT_DIR/tmp/credentials" <<EOF
 [default]
 aws_access_key_id=${AWS_ACCESS_KEY_ID}
 aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}
 EOF
+
+# Verify the file was created with content
+if [ ! -f "$PROJECT_DIR/tmp/credentials" ] || [ ! -s "$PROJECT_DIR/tmp/credentials" ]; then
+    echo "❌ Error: Failed to create credentials file at $PROJECT_DIR/tmp/credentials"
+    exit 1
+fi
+
+echo "   ✅ Credentials file created at $PROJECT_DIR/tmp/credentials"
 
 # Step 6: Get kubeconfig
 # Use current working directory
