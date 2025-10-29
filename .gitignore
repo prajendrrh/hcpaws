@@ -36,3 +36,5 @@ Thumbs.db
 # Checkpoint file for resume functionality
 .checkpoint
 
+# Prerequisites commands file (contains sensitive configuration values)
+PREREQ_COMMANDS.md
