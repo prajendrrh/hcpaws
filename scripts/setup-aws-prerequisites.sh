@@ -111,12 +111,42 @@ export KUBECONFIG="$WORK_DIR/auth/kubeconfig"
 
 # Step 7: Create secret for hypershift operator
 echo "🔐 Creating hypershift operator OIDC provider secret..."
+
+# Delete existing secret if it exists (to ensure fresh credentials)
+echo "   Deleting existing secret if present..."
+oc delete secret hypershift-operator-oidc-provider-s3-credentials -n local-cluster 2>/dev/null || echo "   No existing secret found"
+
+# Verify credentials file exists and has valid content
+if [ ! -f "$PROJECT_DIR/tmp/credentials" ] || [ ! -s "$PROJECT_DIR/tmp/credentials" ]; then
+    echo "❌ Error: Credentials file missing or empty!"
+    exit 1
+fi
+
+# Verify credentials are in the file
+if ! grep -q "aws_access_key_id" "$PROJECT_DIR/tmp/credentials" || ! grep -q "aws_secret_access_key" "$PROJECT_DIR/tmp/credentials"; then
+    echo "❌ Error: Credentials file format is invalid!"
+    echo "   Expected format:"
+    echo "   [default]"
+    echo "   aws_access_key_id=..."
+    echo "   aws_secret_access_key=..."
+    exit 1
+fi
+
+echo "   Creating secret with fresh credentials..."
 oc create secret generic hypershift-operator-oidc-provider-s3-credentials \
     --from-file=credentials="$PROJECT_DIR/tmp/credentials" \
     --from-literal=bucket="$BUCKET_NAME" \
     --from-literal=region="$HOSTED_REGION" \
-    -n local-cluster \
-    --dry-run=client -o yaml | oc apply -f - || echo "  Secret may already exist"
+    -n local-cluster
+
+echo "   ✅ Secret created successfully in local-cluster namespace"
+
+# Verify secret was created and show basic info
+if oc get secret hypershift-operator-oidc-provider-s3-credentials -n local-cluster &>/dev/null; then
+    echo "   Secret verified in cluster"
+else
+    echo "❌ Warning: Secret creation may have failed"
+fi
 
 # Step 8: Create IAM role trust policy
 echo "🔐 Creating IAM role trust policy..."
