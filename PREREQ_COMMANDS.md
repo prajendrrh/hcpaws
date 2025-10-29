@@ -131,7 +131,6 @@ oc get secret hypershift-operator-oidc-provider-s3-credentials -n local-cluster
 
 **Using envsubst:**
 ```bash
-```bash
 export USER_ARN=<USER_ARN>
 echo '{
     "Version": "2012-10-17",
