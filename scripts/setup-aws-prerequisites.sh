@@ -75,12 +75,14 @@ aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}
 EOF
 
 # Step 6: Get kubeconfig
-if [ ! -f "$PROJECT_DIR/installer/auth/kubeconfig" ]; then
-    echo "Error: kubeconfig not found. Please ensure the hub cluster is installed."
+# Use current working directory
+WORK_DIR="${PWD:-$(pwd)}"
+if [ ! -f "$WORK_DIR/auth/kubeconfig" ]; then
+    echo "Error: kubeconfig not found at $WORK_DIR/auth/kubeconfig. Please ensure the hub cluster is installed."
     exit 1
 fi
 
-export KUBECONFIG="$PROJECT_DIR/installer/auth/kubeconfig"
+export KUBECONFIG="$WORK_DIR/auth/kubeconfig"
 
 # Step 7: Create secret for hypershift operator
 echo "🔐 Creating hypershift operator OIDC provider secret..."

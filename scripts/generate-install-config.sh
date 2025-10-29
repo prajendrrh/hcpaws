@@ -65,9 +65,9 @@ for zone in $ZONES; do
 done
 ZONES_YAML=$(echo "$ZONES_YAML" | sed '$s/^ *//')
 
-# Generate install-config.yaml
-mkdir -p "$PROJECT_DIR/installer"
-cat > "$PROJECT_DIR/installer/install-config.yaml" <<EOF
+# Generate install-config.yaml in current working directory
+WORK_DIR="${PWD:-$(pwd)}"
+cat > "$WORK_DIR/install-config.yaml" <<EOF
 additionalTrustBundlePolicy: $TRUST_BUNDLE_POLICY
 apiVersion: v1
 baseDomain: $BASE_DOMAIN
@@ -109,5 +109,5 @@ publish: $PUBLISH
 pullSecret: '$PULL_SECRET'
 EOF
 
-echo "✅ Generated install-config.yaml at $PROJECT_DIR/installer/install-config.yaml"
+echo "✅ Generated install-config.yaml at $WORK_DIR/install-config.yaml"
 

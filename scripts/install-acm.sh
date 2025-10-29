@@ -7,15 +7,16 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo "🧰 Installing ACM (Advanced Cluster Management)..."
 
-cd "$PROJECT_DIR/installer"
+# Use current working directory
+WORK_DIR="${PWD:-$(pwd)}"
 
 # Check if kubeconfig exists
-if [ ! -f "auth/kubeconfig" ]; then
-    echo "Error: kubeconfig not found. Please ensure the cluster is installed and ready."
+if [ ! -f "$WORK_DIR/auth/kubeconfig" ]; then
+    echo "Error: kubeconfig not found at $WORK_DIR/auth/kubeconfig. Please ensure the cluster is installed and ready."
     exit 1
 fi
 
-export KUBECONFIG="$PROJECT_DIR/installer/auth/kubeconfig"
+export KUBECONFIG="$WORK_DIR/auth/kubeconfig"
 
 # Step 1: Create the Operator Namespace
 echo "📦 Creating open-cluster-management namespace..."

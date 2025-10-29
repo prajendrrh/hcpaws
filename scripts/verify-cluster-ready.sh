@@ -7,16 +7,17 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo "🔍 Verifying cluster is ready..."
 
-cd "$PROJECT_DIR/installer"
+# Use current working directory
+WORK_DIR="${PWD:-$(pwd)}"
 
 # Check if kubeconfig exists
-if [ ! -f "auth/kubeconfig" ]; then
-    echo "Error: kubeconfig not found. Cluster installation may not be complete."
+if [ ! -f "$WORK_DIR/auth/kubeconfig" ]; then
+    echo "Error: kubeconfig not found at $WORK_DIR/auth/kubeconfig. Cluster installation may not be complete."
     exit 1
 fi
 
 # Export kubeconfig
-export KUBECONFIG="$PROJECT_DIR/installer/auth/kubeconfig"
+export KUBECONFIG="$WORK_DIR/auth/kubeconfig"
 
 # Wait for cluster to be ready
 echo "⏳ Waiting for cluster to be ready..."
