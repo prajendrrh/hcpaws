@@ -46,8 +46,53 @@ fi
 
 echo "✅ AWS credentials verified and ready"
 
-# Run openshift-install with credentials explicitly available
-openshift-install create cluster --dir . --log-level debug
+# Create log file for installation logs
+INSTALL_LOG="$WORK_DIR/openshift-install.log"
 
+# Run openshift-install with credentials explicitly available
+# Redirect debug output to log file, but keep stdout/stderr for important messages
+echo "📝 Installation logs will be saved to: $INSTALL_LOG"
+echo "⏳ Starting cluster installation (this will take 30-60 minutes)..."
+echo "   Check the log file for detailed progress: tail -f $INSTALL_LOG"
+
+# Run openshift-install and redirect all output to log file
+# Show a spinner or periodic status updates
+if command -v spinner &> /dev/null; then
+    openshift-install create cluster --dir . --log-level debug 2>&1 | tee "$INSTALL_LOG" &
+    INSTALL_PID=$!
+    # Simple progress indicator
+    while kill -0 $INSTALL_PID 2>/dev/null; do
+        echo -n "."
+        sleep 30
+    done
+    wait $INSTALL_PID
+    EXIT_CODE=$?
+else
+    # If spinner not available, just redirect process output to log
+    # Run in background and show periodic updates
+    openshift-install create cluster --dir . --log-level debug > "$INSTALL_LOG" 2>&1 &
+    INSTALL_PID=$!
+    
+    # Show periodic status updates
+    while kill -0 $INSTALL_PID 2>/dev/null; do
+        sleep 60
+        echo "   Still installing... (check $INSTALL_LOG for details)"
+    done
+    wait $INSTALL_PID
+    EXIT_CODE=$?
+fi
+
+# Check if installation was successful
+if [ $EXIT_CODE -ne 0 ]; then
+    echo ""
+    echo "❌ Cluster installation failed!"
+    echo "   Check the log file for details: $INSTALL_LOG"
+    echo "   Last 50 lines of log:"
+    tail -50 "$INSTALL_LOG"
+    exit $EXIT_CODE
+fi
+
+echo ""
 echo "✅ Hub cluster installation completed!"
+echo "📝 Full installation log saved to: $INSTALL_LOG"
 
