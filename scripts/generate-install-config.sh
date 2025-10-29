@@ -19,6 +19,11 @@ fi
 
 echo "📝 Generating install-config.yaml from template..."
 
+# Setup AWS credentials in ~/.aws/credentials and ~/.aws/config
+if [ -f "$PROJECT_DIR/aws-credentials.env" ]; then
+    bash "$SCRIPT_DIR/setup-aws-credentials.sh"
+fi
+
 # Read values from config.yaml
 CLUSTER_NAME=$(yq eval '.hub_cluster.name' "$PROJECT_DIR/config.yaml")
 BASE_DOMAIN=$(yq eval '.hub_cluster.base_domain' "$PROJECT_DIR/config.yaml")

@@ -7,6 +7,11 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo "🚀 Installing OpenShift Hub Cluster..."
 
+# Setup AWS credentials in ~/.aws/credentials and ~/.aws/config
+if [ -f "$PROJECT_DIR/aws-credentials.env" ]; then
+    bash "$SCRIPT_DIR/setup-aws-credentials.sh"
+fi
+
 # Use current working directory
 WORK_DIR="${PWD:-$(pwd)}"
 

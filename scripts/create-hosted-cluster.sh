@@ -13,6 +13,11 @@ if [ ! -f "$PROJECT_DIR/config.yaml" ]; then
     exit 1
 fi
 
+# Setup AWS credentials in ~/.aws/credentials and ~/.aws/config
+if [ -f "$PROJECT_DIR/aws-credentials.env" ]; then
+    bash "$SCRIPT_DIR/setup-aws-credentials.sh"
+fi
+
 # Read config values using yq
 CLUSTER_NAME=$(yq eval '.hosted_cluster.name' "$PROJECT_DIR/config.yaml")
 INFRA_ID=$(yq eval '.hosted_cluster.infra_id' "$PROJECT_DIR/config.yaml")
