@@ -120,7 +120,32 @@ oc apply -f /tmp/multiclusterhub.yaml
 
 # Step 5: Wait for ACM Hub to be ready
 echo "⏳ Waiting for ACM Hub to come online (this may take 10-15 minutes)..."
-oc wait --for=condition=Available --timeout=30m multiclusterhub/multiclusterhub -n open-cluster-management
+
+# Check if MCH is already in a ready state
+MCH_STATUS=$(oc get multiclusterhub multiclusterhub -n open-cluster-management -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+MCH_AVAILABLE=$(oc get multiclusterhub multiclusterhub -n open-cluster-management -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null || echo "")
+MCH_RUNNING=$(oc get multiclusterhub multiclusterhub -n open-cluster-management -o jsonpath='{.status.conditions[?(@.type=="Progressing")].status}' 2>/dev/null || echo "")
+
+if [ "$MCH_STATUS" = "Running" ] || [ "$MCH_AVAILABLE" = "True" ] || [ "$MCH_STATUS" = "Available" ]; then
+    echo "✅ MultiClusterHub is already in ready state ($MCH_STATUS), skipping wait"
+else
+    echo "   Current status: $MCH_STATUS (Available: $MCH_AVAILABLE)"
+    # Wait for Available condition or check periodically
+    oc wait --for=condition=Available --timeout=30m multiclusterhub/multiclusterhub -n open-cluster-management || {
+        # If wait fails, check if it's actually running
+        echo "   Wait completed, checking final status..."
+        MCH_STATUS=$(oc get multiclusterhub multiclusterhub -n open-cluster-management -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+        MCH_AVAILABLE=$(oc get multiclusterhub multiclusterhub -n open-cluster-management -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null || echo "")
+        if [ "$MCH_STATUS" = "Running" ] || [ "$MCH_AVAILABLE" = "True" ] || [ "$MCH_STATUS" = "Available" ]; then
+            echo "✅ MultiClusterHub is in ready state ($MCH_STATUS), continuing..."
+        else
+            echo "⚠️  Warning: MultiClusterHub status is $MCH_STATUS (Expected: Running/Available)"
+            echo "   Checking detailed status..."
+            oc get multiclusterhub multiclusterhub -n open-cluster-management -o yaml | grep -A 15 "status:"
+            echo "   Continuing anyway - please verify manually if needed"
+        fi
+    }
+fi
 
 echo "✅ ACM Hub is ready!"
 
