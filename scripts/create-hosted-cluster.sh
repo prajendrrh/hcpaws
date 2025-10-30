@@ -40,7 +40,6 @@ if ! aws sts get-caller-identity &>/dev/null; then
 fi
 
 echo "✅ AWS credentials verified"
-echo "   AWS Identity: $(aws sts get-caller-identity --query 'Arn' --output text)"
 
 # Read config values using yq
 CLUSTER_NAME=$(yq eval '.hosted_cluster.name' "$PROJECT_DIR/config.yaml")
@@ -99,107 +98,10 @@ if ! jq -e '.Credentials.AccessKeyId and .Credentials.SecretAccessKey and .Crede
     exit 1
 fi
 
-# Check if STS credentials are expired (robust RFC3339 parsing)
-STS_EXPIRATION=$(jq -r '.Credentials.Expiration' "$STS_CREDS_FILE" 2>/dev/null || echo "")
-if [ -n "$STS_EXPIRATION" ] && [ "$STS_EXPIRATION" != "null" ]; then
-    # Try GNU date first
-    STS_EXPIRATION_EPOCH=$(date -d "$STS_EXPIRATION" +%s 2>/dev/null || echo "")
-
-    if [ -z "$STS_EXPIRATION_EPOCH" ]; then
-        # If ends with Z, try BSD date with Z format
-        if echo "$STS_EXPIRATION" | grep -q "Z$"; then
-            STS_EXPIRATION_EPOCH=$(date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$STS_EXPIRATION" +%s 2>/dev/null || echo "")
-        else
-            # Normalize timezone offset from "+hh:mm" to "+hhmm" for BSD date
-            STS_EXPIRATION_NOCOLON=$(echo "$STS_EXPIRATION" | sed -E 's/(.*[+\-][0-9]{2}):([0-9]{2})$/\1\2/')
-            STS_EXPIRATION_EPOCH=$(date -u -j -f "%Y-%m-%dT%H:%M:%S%z" "$STS_EXPIRATION_NOCOLON" +%s 2>/dev/null || echo "")
-        fi
-    fi
-
-    if [ -z "$STS_EXPIRATION_EPOCH" ]; then
-        echo "⚠️  Warning: Could not parse STS Expiration time: $STS_EXPIRATION"
-        echo "   Skipping expiration check."
-    else
-        CURRENT_EPOCH=$(date +%s)
-        if [ "$STS_EXPIRATION_EPOCH" -lt "$CURRENT_EPOCH" ]; then
-            echo "❌ Error: STS credentials in sts-creds.json have expired"
-            echo "   Expiration: $STS_EXPIRATION"
-            echo "   Please regenerate by running setup-aws-prerequisites.sh"
-            exit 1
-        fi
-        echo "   STS credentials expire at: $STS_EXPIRATION"
-    fi
-fi
-
 # Create hosted cluster
 # Use current working directory for log file
 WORK_DIR="${PWD:-$(pwd)}"
 HOSTED_CLUSTER_LOG="$WORK_DIR/hosted-cluster-creation.log"
-
-# Verify we can assume the role using the STS credentials (same as hcp CLI will use)
-echo "🔍 Verifying role assumption permissions using STS credentials..."
-CURRENT_USER_ARN=$(aws sts get-caller-identity --query "Arn" --output text 2>/dev/null || echo "")
-if [ -z "$CURRENT_USER_ARN" ]; then
-    echo "❌ Error: Cannot determine current AWS user identity"
-    exit 1
-fi
-
-echo "   Current AWS Identity: $CURRENT_USER_ARN"
-echo "   Target Role ARN: $ROLE_ARN"
-
-# Extract STS credentials from sts-creds.json
-STS_ACCESS_KEY=$(jq -r '.Credentials.AccessKeyId' "$STS_CREDS_FILE")
-STS_SECRET_KEY=$(jq -r '.Credentials.SecretAccessKey' "$STS_CREDS_FILE")
-STS_SESSION_TOKEN=$(jq -r '.Credentials.SessionToken' "$STS_CREDS_FILE")
-
-# Verify STS credentials identity
-echo "   Verifying STS credentials identity..."
-STS_IDENTITY=$(AWS_ACCESS_KEY_ID="$STS_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$STS_SECRET_KEY" AWS_SESSION_TOKEN="$STS_SESSION_TOKEN" \
-    aws sts get-caller-identity --query "Arn" --output text 2>/dev/null || echo "")
-if [ -z "$STS_IDENTITY" ]; then
-    echo "❌ Error: STS credentials are invalid or expired"
-    echo "   Please regenerate by running setup-aws-prerequisites.sh"
-    exit 1
-fi
-echo "   STS Identity: $STS_IDENTITY"
-
-# Check the role trust policy to verify it allows this user
-echo "   Checking role trust policy..."
-TRUST_POLICY_ARN=$(aws iam get-role --role-name "$IAM_ROLE_NAME" --query "Role.AssumeRolePolicyDocument.Statement[0].Principal.AWS" --output text 2>/dev/null || echo "")
-if [ -n "$TRUST_POLICY_ARN" ]; then
-    if echo "$TRUST_POLICY_ARN" | grep -q "$CURRENT_USER_ARN" || echo "$CURRENT_USER_ARN" | grep -q "$(echo $TRUST_POLICY_ARN | tr -d '\"')"; then
-        echo "   ✅ Trust policy appears to allow this user"
-    else
-        echo "   ⚠️  Warning: Trust policy allows: $TRUST_POLICY_ARN"
-        echo "   Current user: $CURRENT_USER_ARN"
-    fi
-fi
-
-# Try to assume the role using STS credentials (same as hcp CLI will use)
-echo "   Attempting to assume role using STS credentials..."
-ASSUME_ROLE_OUTPUT=$(AWS_ACCESS_KEY_ID="$STS_ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$STS_SECRET_KEY" AWS_SESSION_TOKEN="$STS_SESSION_TOKEN" \
-    aws sts assume-role --role-arn "$ROLE_ARN" --role-session-name "hcp-cluster-creation-check" --duration-seconds 900 2>&1)
-ASSUME_ROLE_EXIT=$?
-
-if [ $ASSUME_ROLE_EXIT -ne 0 ]; then
-    echo "❌ Error: Cannot assume role $ROLE_ARN using STS credentials"
-    echo "   This is the same check that hcp CLI will perform, so cluster creation will fail."
-    echo ""
-    echo "   Error details:"
-    echo "$ASSUME_ROLE_OUTPUT" | head -10
-    echo ""
-    echo "   Troubleshooting steps:"
-    echo "   1. Verify the IAM role trust policy allows: $STS_IDENTITY (or $CURRENT_USER_ARN)"
-    echo "   2. Check the role trust policy:"
-    echo "      aws iam get-role --role-name $IAM_ROLE_NAME --query 'Role.AssumeRolePolicyDocument'"
-    echo "   3. Ensure setup-aws-prerequisites.sh was run and used the correct USER_ARN"
-    echo "   4. If your USER_ARN has changed, recreate the role with the correct trust policy"
-    echo "   5. Regenerate STS credentials: bash scripts/setup-aws-prerequisites.sh"
-    echo ""
-    exit 1
-else
-    echo "✅ Role assumption verified successfully using STS credentials"
-fi
 
 # Ensure AWS region is set for the hcp command
 export AWS_REGION="$REGION"
@@ -213,7 +115,6 @@ echo "   Using STS Creds: $STS_CREDS_FILE"
 echo -n "   Creating"
 
 # Run hcp command in background and redirect output to log file
-# Ensure AWS credentials are exported for hcp CLI
 hcp create cluster aws \
     --name "$CLUSTER_NAME" \
     --infra-id "$INFRA_ID" \
@@ -257,5 +158,4 @@ if [ $EXIT_CODE -ne 0 ]; then
 fi
 
 echo "✅ Hosted cluster creation completed!"
-echo "📝 Full creation log saved to: $HOSTED_CLUSTER_LOG"
-
+echo "📝 Full creation log saved to: $HOSTED_CLUSTուՙSTER_LOG"
