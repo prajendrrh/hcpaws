@@ -28,6 +28,7 @@ Before running the tool, ensure you have:
 ### 1. Clone or Download this Repository
 
 ```bash
+git clone https://github.com/prajendrrh/hcpaws.git
 cd openshift-acm-hub-installer
 ```
 
@@ -47,44 +48,108 @@ Edit the files with your actual values:
 - **aws-credentials.env**: Fill in your AWS Access Key ID and Secret Access Key
 - **pull-secret.txt**: Paste your OpenShift pull secret
 
-### 3. Run the Installation
-
-Make scripts executable:
+### 3. Make Scripts Executable
 
 ```bash
 chmod +x main.sh scripts/*.sh
 ```
 
-Run the main installer:
+## Usage
+
+### Create Installation (Full Workflow)
+
+Run the complete installation workflow:
 
 ```bash
 ./main.sh
 ```
 
-Or run individual steps as needed:
+This will execute all steps in order:
+1. Check prerequisites
+2. Generate install-config.yaml
+3. Install OpenShift Hub Cluster (30-60 minutes)
+4. Verify cluster is ready
+5. Install ACM (10-15 minutes)
+6. Setup AWS prerequisites for hosted cluster
+7. Create hosted cluster (15-20 minutes)
+
+**Total time: ~60-95 minutes**
+
+All output messages include timestamps in format `[YYYY-MM-DD HH:MM:SS]` for better traceability.
+
+### Resume Installation
+
+If the installation fails or is interrupted, you can resume from where it stopped:
 
 ```bash
-# Check prerequisites
+./main.sh --resume
+```
+
+or
+
+```bash
+./main.sh -r
+```
+
+The script uses a checkpoint file (`.checkpoint`) to track progress. It will skip completed steps and continue from the last failed step.
+
+**Note:** The checkpoint file is automatically created and updated during installation, and is removed upon successful completion.
+
+### Run Individual Steps
+
+You can also run individual steps manually:
+
+```bash
+# Step 1: Check prerequisites
 ./scripts/check-prerequisites.sh
 
-# Generate install-config
+# Step 2: Generate install-config.yaml
 ./scripts/generate-install-config.sh
 
-# Install hub cluster
+# Step 3: Install hub cluster (30-60 minutes)
 ./scripts/install-hub-cluster.sh
 
-# Verify cluster
+# Step 4: Verify cluster is ready
 ./scripts/verify-cluster-ready.sh
 
-# Install ACM
+# Step 5: Install ACM (10-15 minutes)
 ./scripts/install-acm.sh
 
-# Setup AWS prerequisites
-./scripts/setup-aws-prerequisites.sh
+# Step 6: Setup AWS prerequisites
+cd installer  # Must be run from directory containing auth/kubeconfig
+../scripts/setup-aws-prerequisites.sh
 
-# Create hosted cluster
+# Step 7: Create hosted cluster (15-20 minutes)
 ./scripts/create-hosted-cluster.sh
 ```
+
+### Delete Hosted Cluster
+
+To delete a hosted cluster:
+
+```bash
+./scripts/delete-hosted-cluster.sh
+```
+
+This will:
+- Delete the hosted cluster using hcp CLI
+- Remove cluster resources from ACM
+- Clean up AWS resources associated with the hosted cluster
+
+### Delete All Resources
+
+To delete everything (hub cluster and hosted cluster):
+
+**⚠️ Warning:** This will delete the hub cluster and all hosted clusters!
+
+```bash
+./scripts/delete-all.sh
+```
+
+This will:
+- Delete all hosted clusters
+- Delete the hub cluster (if using OpenShift installer-managed cluster)
+- Clean up associated AWS resources
 
 ## Configuration
 
@@ -126,7 +191,10 @@ openshift-acm-hub-installer/
 │   ├── verify-cluster-ready.sh       # Verify cluster is ready
 │   ├── install-acm.sh                # Install ACM operator
 │   ├── setup-aws-prerequisites.sh    # Setup AWS resources
-│   └── create-hosted-cluster.sh      # Create hosted cluster
+│   ├── setup-aws-credentials.sh      # Setup AWS credentials
+│   ├── create-hosted-cluster.sh      # Create hosted cluster
+│   ├── delete-hosted-cluster.sh      # Delete hosted cluster
+│   └── delete-all.sh                 # Delete all resources
 └── installer/                        # Created during installation
     ├── install-config.yaml          # Generated install config
     └── auth/                        # Cluster credentials
@@ -194,12 +262,80 @@ oc get route -n open-cluster-management multicloud-console -o jsonpath='{.spec.h
 - Ensure S3 bucket exists and is accessible
 - Review hcp CLI output for errors
 
+## Installation Steps Detail
+
+The installation process consists of 7 steps:
+
+### Step 1: Check Prerequisites
+- Verifies required tools are installed: `openshift-install`, `oc`, `hcp`, `aws`, `yq`, `envsubst`
+- Shows installation instructions if any tool is missing
+- Always runs at the beginning, even when resuming
+
+### Step 2: Generate install-config.yaml
+- Reads configuration from `config.yaml`
+- Generates `installer/install-config.yaml` for OpenShift installation
+- Validates AWS credentials
+
+### Step 3: Install OpenShift Hub Cluster
+- Creates OpenShift 4.19 cluster on AWS
+- Uses `openshift-install` to provision infrastructure
+- **Duration: 30-60 minutes**
+- Creates 3 control plane nodes and 3 worker nodes by default
+- Generates kubeconfig at `installer/auth/kubeconfig`
+
+### Step 4: Verify Cluster is Ready
+- Waits for all cluster operators to be available
+- Verifies cluster nodes are ready
+- Ensures cluster is fully operational before proceeding
+
+### Step 5: Install ACM
+- Installs Advanced Cluster Management operator
+- Creates MultiClusterHub instance
+- Installs Hypershift add-on
+- **Duration: 10-15 minutes**
+
+### Step 6: Setup AWS Prerequisites
+- Creates S3 bucket for OIDC provider
+- Sets up bucket policies
+- Creates IAM role with necessary permissions
+- Generates STS credentials (`sts-creds.json`)
+- Creates Kubernetes secret for hypershift operator
+- **Note:** Must be run from directory containing `auth/kubeconfig`
+
+### Step 7: Create Hosted Cluster
+- Uses `hcp` CLI to create hosted cluster on AWS
+- Creates cluster in the namespace specified in config
+- **Duration: 15-20 minutes**
+- Logs saved to `hosted-cluster-creation.log`
+
+## Features
+
+### Timestamps
+All output messages include timestamps in format `[YYYY-MM-DD HH:MM:SS]` for better traceability:
+
+```
+[2025-01-12 14:30:45] Step 1: Checking prerequisites...
+[2025-01-12 14:30:50] Step 2: Generating install-config.yaml...
+```
+
+### Checkpoint/Resume
+- Automatically tracks installation progress in `.checkpoint` file
+- Can resume from any step if installation is interrupted
+- Checkpoint is automatically cleared on successful completion
+
+### Error Handling
+- Scripts validate prerequisites before running
+- Clear error messages with suggestions for resolution
+- Failed steps can be retried individually
+
 ## Notes
 
-- The hub cluster installation takes approximately 30-60 minutes
-- ACM installation takes approximately 10-15 minutes
-- Hosted cluster creation takes approximately 15-20 minutes
-- Total time: ~60-95 minutes
+- The hub cluster installation takes approximately **30-60 minutes**
+- ACM installation takes approximately **10-15 minutes**
+- Hosted cluster creation takes approximately **15-20 minutes**
+- **Total time: ~60-95 minutes**
+- The `sts-creds.json` file is saved in the same directory as `pull-secret.txt`
+- All sensitive files (credentials, configs) are excluded from git via `.gitignore`
 
 ## Support
 
