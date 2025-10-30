@@ -82,20 +82,27 @@ if [ -f "$INSTALL_DIR/auth/kubeconfig" ]; then
     echo "   Found cluster installation at: $INSTALL_DIR"
     export KUBECONFIG="$INSTALL_DIR/auth/kubeconfig"
     
-    # Check if install-config.yaml exists (needed for destroy)
-    if [ -f "$INSTALL_DIR/install-config.yaml" ]; then
-        cd "$INSTALL_DIR"
-        echo "   Destroying cluster infrastructure (this may take 20-30 minutes)..."
-        openshift-install destroy cluster --dir . --log-level=info || {
-            echo "⚠️  Warning: Cluster destruction had errors. Some resources may need manual cleanup in AWS."
-        }
-        echo "✅ Cluster infrastructure destruction completed"
-    else
-        echo "⚠️  Warning: install-config.yaml not found. Cannot use openshift-install destroy."
-        echo "   Please manually delete the cluster via AWS console."
-    fi
+    cd "$INSTALL_DIR"
+    DESTROY_LOG="$INSTALL_DIR/cluster-destruction.log"
+    echo "   Destroying cluster infrastructure (this may take 20-30 minutes)..."
+    echo "   Log file: $DESTROY_LOG"
+    openshift-install destroy cluster --dir . --log-level debug > "$DESTROY_LOG" 2>&1 || {
+        echo "⚠️  Warning: Cluster destruction had errors. Check log file: $DESTROY_LOG"
+        echo "   Some resources may need manual cleanup in AWS."
+    }
+    echo "✅ Cluster infrastructure destruction completed"
+    echo "   Full destruction log saved to: $DESTROY_LOG"
 else
     echo "   ⚠️  Warning: kubeconfig not found. Cannot delete cluster automatically."
+    echo "   Checking if cluster directory exists anyway..."
+    if [ -f "$INSTALL_DIR/metadata.json" ]; then
+        echo "   Found metadata.json, attempting destruction without kubeconfig..."
+        cd "$INSTALL_DIR"
+        DESTROY_LOG="$INSTALL_DIR/cluster-destruction.log"
+        openshift-install destroy cluster --dir . --log-level debug > "$DESTROY_LOG" 2>&1 || {
+            echo "⚠️  Warning: Cluster destruction had errors. Check log file: $DESTROY_LOG"
+        }
+    fi
 fi
 
 # Step 4: Clean up local files
