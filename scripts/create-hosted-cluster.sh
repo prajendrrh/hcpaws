@@ -23,6 +23,25 @@ fi
 export AWS_PROFILE=default
 export AWS_DEFAULT_PROFILE=default
 
+# Verify AWS credentials are available
+if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+    if [ -f "$PROJECT_DIR/aws-credentials.env" ]; then
+        source "$PROJECT_DIR/aws-credentials.env"
+        export AWS_ACCESS_KEY_ID
+        export AWS_SECRET_ACCESS_KEY
+    fi
+fi
+
+# Verify we can call AWS CLI
+if ! aws sts get-caller-identity &>/dev/null; then
+    echo "❌ Error: AWS credentials are not configured or invalid"
+    echo "   Please ensure AWS credentials are set up correctly"
+    exit 1
+fi
+
+echo "✅ AWS credentials verified"
+echo "   AWS Identity: $(aws sts get-caller-identity --query 'Arn' --output text)"
+
 # Read config values using yq
 CLUSTER_NAME=$(yq eval '.hosted_cluster.name' "$PROJECT_DIR/config.yaml")
 INFRA_ID=$(yq eval '.hosted_cluster.infra_id' "$PROJECT_DIR/config.yaml")
@@ -77,12 +96,29 @@ fi
 WORK_DIR="${PWD:-$(pwd)}"
 HOSTED_CLUSTER_LOG="$WORK_DIR/hosted-cluster-creation.log"
 
+# Verify we can assume the role (this ensures permissions are correct)
+echo "🔍 Verifying role assumption permissions..."
+if ! aws sts assume-role --role-arn "$ROLE_ARN" --role-session-name "hcp-cluster-creation-check" --duration-seconds 900 &>/dev/null; then
+    echo "⚠️  Warning: Cannot assume role $ROLE_ARN"
+    echo "   This might be okay if hcp CLI handles role assumption internally"
+    echo "   Continuing with cluster creation..."
+else
+    echo "✅ Role assumption verified"
+fi
+
+# Ensure AWS region is set for the hcp command
+export AWS_REGION="$REGION"
+export AWS_DEFAULT_REGION="$REGION"
+
 echo "⏳ Creating hosted cluster: $CLUSTER_NAME (this may take 15-20 minutes)..."
 echo "📝 Hosted cluster creation logs will be saved to: $HOSTED_CLUSTER_LOG"
 echo "   You can monitor progress with: tail -f $HOSTED_CLUSTER_LOG"
+echo "   Using Role ARN: $ROLE_ARN"
+echo "   Using STS Creds: $STS_CREDS_FILE"
 echo -n "   Creating"
 
 # Run hcp command in background and redirect output to log file
+# Ensure AWS credentials are exported for hcp CLI
 hcp create cluster aws \
     --name "$CLUSTER_NAME" \
     --infra-id "$INFRA_ID" \
