@@ -99,18 +99,36 @@ if ! jq -e '.Credentials.AccessKeyId and .Credentials.SecretAccessKey and .Crede
     exit 1
 fi
 
-# Check if STS credentials are expired
+# Check if STS credentials are expired (robust RFC3339 parsing)
 STS_EXPIRATION=$(jq -r '.Credentials.Expiration' "$STS_CREDS_FILE" 2>/dev/null || echo "")
 if [ -n "$STS_EXPIRATION" ] && [ "$STS_EXPIRATION" != "null" ]; then
-    STS_EXPIRATION_EPOCH=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$STS_EXPIRATION" +%s 2>/dev/null || date -d "$STS_EXPIRATION" +%s 2>/dev/null || echo "0")
-    CURRENT_EPOCH=$(date +%s)
-    if [ "$STS_EXPIRATION_EPOCH" -lt "$CURRENT_EPOCH" ]; then
-        echo "❌ Error: STS credentials in sts-creds.json have expired"
-        echo "   Expiration: $STS_EXPIRATION"
-        echo "   Please regenerate by running setup-aws-prerequisites.sh"
-        exit 1
+    # Try GNU date first
+    STS_EXPIRATION_EPOCH=$(date -d "$STS_EXPIRATION" +%s 2>/dev/null || echo "")
+
+    if [ -z "$STS_EXPIRATION_EPOCH" ]; then
+        # If ends with Z, try BSD date with Z format
+        if echo "$STS_EXPIRATION" | grep -q "Z$"; then
+            STS_EXPIRATION_EPOCH=$(date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$STS_EXPIRATION" +%s 2>/dev/null || echo "")
+        else
+            # Normalize timezone offset from "+hh:mm" to "+hhmm" for BSD date
+            STS_EXPIRATION_NOCOLON=$(echo "$STS_EXPIRATION" | sed -E 's/(.*[+\-][0-9]{2}):([0-9]{2})$/\1\2/')
+            STS_EXPIRATION_EPOCH=$(date -u -j -f "%Y-%m-%dT%H:%M:%S%z" "$STS_EXPIRATION_NOCOLON" +%s 2>/dev/null || echo "")
+        fi
     fi
-    echo "   STS credentials expire at: $STS_EXPIRATION"
+
+    if [ -z "$STS_EXPIRATION_EPOCH" ]; then
+        echo "⚠️  Warning: Could not parse STS Expiration time: $STS_EXPIRATION"
+        echo "   Skipping expiration check."
+    else
+        CURRENT_EPOCH=$(date +%s)
+        if [ "$STS_EXPIRATION_EPOCH" -lt "$CURRENT_EPOCH" ]; then
+            echo "❌ Error: STS credentials in sts-creds.json have expired"
+            echo "   Expiration: $STS_EXPIRATION"
+            echo "   Please regenerate by running setup-aws-prerequisites.sh"
+            exit 1
+        fi
+        echo "   STS credentials expire at: $STS_EXPIRATION"
+    fi
 fi
 
 # Create hosted cluster
