@@ -50,7 +50,33 @@ oc apply -f /tmp/acm-operator-subscription.yaml
 
 # Step 3: Wait for Operator to be installed
 echo "⏳ Waiting for ACM Operator to be installed..."
-oc wait --for=condition=InstallSucceeded --timeout=20m csv -n open-cluster-management -l operators.coreos.com/advanced-cluster-management.open-cluster-management
+
+# First, wait for the CSV to appear (it takes a moment to be created from the subscription)
+echo "   Waiting for ClusterServiceVersion to be created..."
+TIMEOUT=300  # 5 minutes
+ELAPSED=0
+CSV_NAME=""
+while [ $ELAPSED -lt $TIMEOUT ]; do
+    CSV_NAME=$(oc get csv -n open-cluster-management -o name | grep advanced-cluster-management | head -n1 | cut -d'/' -f2 2>/dev/null || echo "")
+    if [ -n "$CSV_NAME" ]; then
+        echo "   Found CSV: $CSV_NAME"
+        break
+    fi
+    echo "   Waiting for CSV to appear... ($ELAPSED seconds elapsed)"
+    sleep 10
+    ELAPSED=$((ELAPSED + 10))
+done
+
+if [ -z "$CSV_NAME" ]; then
+    echo "❌ Error: ClusterServiceVersion not found after $TIMEOUT seconds"
+    echo "   Checking subscription status..."
+    oc get subscription advanced-cluster-management -n open-cluster-management -o yaml
+    exit 1
+fi
+
+# Now wait for the CSV to be installed successfully
+echo "⏳ Waiting for CSV to reach InstallSucceeded condition (this may take 15-20 minutes)..."
+oc wait --for=condition=InstallSucceeded --timeout=20m csv/"$CSV_NAME" -n open-cluster-management
 
 echo "✅ ACM Operator installed successfully!"
 
