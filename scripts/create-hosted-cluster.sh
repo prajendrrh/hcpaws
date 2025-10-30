@@ -98,12 +98,48 @@ HOSTED_CLUSTER_LOG="$WORK_DIR/hosted-cluster-creation.log"
 
 # Verify we can assume the role (this ensures permissions are correct)
 echo "🔍 Verifying role assumption permissions..."
-if ! aws sts assume-role --role-arn "$ROLE_ARN" --role-session-name "hcp-cluster-creation-check" --duration-seconds 900 &>/dev/null; then
-    echo "⚠️  Warning: Cannot assume role $ROLE_ARN"
-    echo "   This might be okay if hcp CLI handles role assumption internally"
-    echo "   Continuing with cluster creation..."
+CURRENT_USER_ARN=$(aws sts get-caller-identity --query "Arn" --output text 2>/dev/null || echo "")
+if [ -z "$CURRENT_USER_ARN" ]; then
+    echo "❌ Error: Cannot determine current AWS user identity"
+    exit 1
+fi
+
+echo "   Current AWS Identity: $CURRENT_USER_ARN"
+echo "   Target Role ARN: $ROLE_ARN"
+
+# Check the role trust policy to verify it allows this user
+echo "   Checking role trust policy..."
+TRUST_POLICY_ARN=$(aws iam get-role --role-name "$IAM_ROLE_NAME" --query "Role.AssumeRolePolicyDocument.Statement[0].Principal.AWS" --output text 2>/dev/null || echo "")
+if [ -n "$TRUST_POLICY_ARN" ]; then
+    if echo "$TRUST_POLICY_ARN" | grep -q "$CURRENT_USER_ARN" || echo "$CURRENT_USER_ARN" | grep -q "$(echo $TRUST_POLICY_ARN | tr -d '\"')"; then
+        echo "   ✅ Trust policy appears to allow this user"
+    else
+        echo "   ⚠️  Warning: Trust policy allows: $TRUST_POLICY_ARN"
+        echo "   Current user: $CURRENT_USER_ARN"
+    fi
+fi
+
+# Try to assume the role to verify permissions
+echo "   Attempting to assume role..."
+ASSUME_ROLE_OUTPUT=$(aws sts assume-role --role-arn "$ROLE_ARN" --role-session-name "hcp-cluster-creation-check" --duration-seconds 900 2>&1)
+ASSUME_ROLE_EXIT=$?
+
+if [ $ASSUME_ROLE_EXIT -ne 0 ]; then
+    echo "❌ Error: Cannot assume role $ROLE_ARN"
+    echo "   Error details:"
+    echo "$ASSUME_ROLE_OUTPUT" | head -10
+    echo ""
+    echo "   Troubleshooting steps:"
+    echo "   1. Verify the IAM role trust policy allows: $CURRENT_USER_ARN"
+    echo "   2. Check the role trust policy:"
+    echo "      aws iam get-role --role-name $IAM_ROLE_NAME --query 'Role.AssumeRolePolicyDocument'"
+    echo "   3. Ensure setup-aws-prerequisites.sh was run and used the correct USER_ARN"
+    echo "   4. If your USER_ARN has changed, recreate the role with the correct trust policy"
+    echo ""
+    echo "   The hcp CLI requires credentials that can assume this role to create the cluster."
+    exit 1
 else
-    echo "✅ Role assumption verified"
+    echo "✅ Role assumption verified successfully"
 fi
 
 # Ensure AWS region is set for the hcp command
