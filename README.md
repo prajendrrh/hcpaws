@@ -223,22 +223,16 @@ hcpaws/
 After installation, kubeconfig is available at:
 
 ```
-installer/auth/kubeconfig
+auth/kubeconfig
 ```
 
 Export it:
 
 ```bash
-export KUBECONFIG=$(pwd)/installer/auth/kubeconfig
+export KUBECONFIG=$(pwd)/auth/kubeconfig
 ```
 
-### ACM Console
-
-Get the ACM console URL:
-
-```bash
-oc get route -n open-cluster-management multicloud-console -o jsonpath='{.spec.host}'
-```
+**Note:** The kubeconfig location depends on where you ran the installation. It's typically in the `installer` directory or the current working directory where the cluster was installed.
 
 ## Troubleshooting
 
