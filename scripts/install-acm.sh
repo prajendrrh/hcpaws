@@ -20,7 +20,7 @@ export KUBECONFIG="$WORK_DIR/auth/kubeconfig"
 
 # Step 1: Create the Operator Namespace
 echo "📦 Creating open-cluster-management namespace..."
-oc new-project open-cluster-management || echo "Namespace already exists"
+oc new-project open-cluster-management &>/dev/null || echo "Namespace already exists"
 
 # Step 2: Install ACM Operator
 echo "📦 Installing ACM Operator..."
