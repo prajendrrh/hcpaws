@@ -74,9 +74,33 @@ if [ -z "$CSV_NAME" ]; then
     exit 1
 fi
 
-# Now wait for the CSV to be installed successfully
-echo "⏳ Waiting for CSV to reach InstallSucceeded condition (this may take 15-20 minutes)..."
-oc wait --for=condition=InstallSucceeded --timeout=20m csv/"$CSV_NAME" -n open-cluster-management
+# Check if CSV is already in InstallSucceeded state
+CSV_PHASE=$(oc get csv "$CSV_NAME" -n open-cluster-management -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+if [ "$CSV_PHASE" = "Succeeded" ]; then
+    echo "✅ CSV is already in Succeeded phase, skipping wait"
+else
+    # Check condition directly
+    CSV_CONDITION=$(oc get csv "$CSV_NAME" -n open-cluster-management -o jsonpath='{.status.conditions[?(@.type=="InstallSucceeded")].status}' 2>/dev/null || echo "")
+    if [ "$CSV_CONDITION" = "True" ]; then
+        echo "✅ CSV already has InstallSucceeded=True, skipping wait"
+    else
+        # Now wait for the CSV to be installed successfully
+        echo "⏳ Waiting for CSV to reach InstallSucceeded condition (this may take 15-20 minutes)..."
+        oc wait --for=condition=InstallSucceeded --timeout=20m csv/"$CSV_NAME" -n open-cluster-management || {
+            # If wait fails, check the actual status
+            echo "   Checking CSV status..."
+            oc get csv "$CSV_NAME" -n open-cluster-management -o yaml | grep -A 10 "status:"
+            CSV_PHASE=$(oc get csv "$CSV_NAME" -n open-cluster-management -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            CSV_CONDITION=$(oc get csv "$CSV_NAME" -n open-cluster-management -o jsonpath='{.status.conditions[?(@.type=="InstallSucceeded")].status}' 2>/dev/null || echo "")
+            if [ "$CSV_PHASE" = "Succeeded" ] || [ "$CSV_CONDITION" = "True" ]; then
+                echo "✅ CSV is in Succeeded state, continuing..."
+            else
+                echo "❌ CSV installation may have failed. Check status above."
+                exit 1
+            fi
+        }
+    fi
+fi
 
 echo "✅ ACM Operator installed successfully!"
 
