@@ -74,32 +74,30 @@ if [ -z "$CSV_NAME" ]; then
     exit 1
 fi
 
-# Check if CSV is already in InstallSucceeded state
-CSV_PHASE=$(oc get csv "$CSV_NAME" -n open-cluster-management -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-if [ "$CSV_PHASE" = "Succeeded" ]; then
-    echo "✅ CSV is already in Succeeded phase, skipping wait"
-else
-    # Check condition directly
+# Poll CSV phase directly to avoid oc wait hang
+POLL_TIMEOUT=1200   # 20 minutes
+POLL_ELAPSED=0
+POLL_INTERVAL=10
+echo "⏳ Monitoring CSV status until Succeeded (up to $((POLL_TIMEOUT/60)) minutes)..."
+while [ $POLL_ELAPSED -lt $POLL_TIMEOUT ]; do
+    CSV_PHASE=$(oc get csv "$CSV_NAME" -n open-cluster-management -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
     CSV_CONDITION=$(oc get csv "$CSV_NAME" -n open-cluster-management -o jsonpath='{.status.conditions[?(@.type=="InstallSucceeded")].status}' 2>/dev/null || echo "")
-    if [ "$CSV_CONDITION" = "True" ]; then
-        echo "✅ CSV already has InstallSucceeded=True, skipping wait"
-    else
-        # Now wait for the CSV to be installed successfully
-        echo "⏳ Waiting for CSV to reach InstallSucceeded condition (this may take 15-20 minutes)..."
-        oc wait --for=condition=InstallSucceeded --timeout=20m csv/"$CSV_NAME" -n open-cluster-management || {
-            # If wait fails, check the actual status
-            echo "   Checking CSV status..."
-            oc get csv "$CSV_NAME" -n open-cluster-management -o yaml | grep -A 10 "status:"
-            CSV_PHASE=$(oc get csv "$CSV_NAME" -n open-cluster-management -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-            CSV_CONDITION=$(oc get csv "$CSV_NAME" -n open-cluster-management -o jsonpath='{.status.conditions[?(@.type=="InstallSucceeded")].status}' 2>/dev/null || echo "")
-            if [ "$CSV_PHASE" = "Succeeded" ] || [ "$CSV_CONDITION" = "True" ]; then
-                echo "✅ CSV is in Succeeded state, continuing..."
-            else
-                echo "❌ CSV installation may have failed. Check status above."
-                exit 1
-            fi
-        }
+    echo "   CSV phase: ${CSV_PHASE:-unknown} (InstallSucceeded: ${CSV_CONDITION:-unknown}) at ${POLL_ELAPSED}s"
+    if [ "$CSV_PHASE" = "Succeeded" ] || [ "$CSV_CONDITION" = "True" ]; then
+        echo "✅ CSV reached Succeeded, continuing..."
+        break
     fi
+    sleep $POLL_INTERVAL
+    POLL_ELAPSED=$((POLL_ELAPSED + POLL_INTERVAL))
+done
+
+if [ "$CSV_PHASE" != "Succeeded" ] && [ "$CSV_CONDITION" != "True" ]; then
+    echo "❌ Timeout waiting for CSV to succeed. Current phase: ${CSV_PHASE:-unknown}"
+    echo "   Subscription status:"
+    oc get subscription advanced-cluster-management -n open-cluster-management -o yaml | sed -n '1,120p'
+    echo "   CSV status:"
+    oc get csv "$CSV_NAME" -n open-cluster-management -o yaml | sed -n '1,200p'
+    exit 1
 fi
 
 echo "✅ ACM Operator installed successfully!"
