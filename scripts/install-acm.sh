@@ -48,59 +48,25 @@ EOF
 
 oc apply -f /tmp/acm-operator-subscription.yaml
 
-# Step 3: Wait for Operator to be installed
-echo "⏳ Waiting for ACM Operator to be installed..."
+# Step 3: Wait for Operator to be installed (simple)
+echo "⏳ Waiting 60s for ACM Operator to settle..."
+sleep 60
 
-# First, wait for the CSV to appear (it takes a moment to be created from the subscription)
-echo "   Waiting for ClusterServiceVersion to be created..."
-TIMEOUT=300  # 5 minutes
-ELAPSED=0
-CSV_NAME=""
-while [ $ELAPSED -lt $TIMEOUT ]; do
-    CSV_NAME=$(oc get csv -n open-cluster-management -o name | grep advanced-cluster-management | head -n1 | cut -d'/' -f2 2>/dev/null || echo "")
-    if [ -n "$CSV_NAME" ]; then
-        echo "   Found CSV: $CSV_NAME"
-        break
-    fi
-    echo "   Waiting for CSV to appear... ($ELAPSED seconds elapsed)"
-    sleep 10
-    ELAPSED=$((ELAPSED + 10))
-done
-
+# Find the ACM CSV and check phase
+CSV_NAME=$(oc get csv -n open-cluster-management -o name | grep advanced-cluster-management | head -n1 | cut -d'/' -f2 2>/dev/null || echo "")
 if [ -z "$CSV_NAME" ]; then
-    echo "❌ Error: ClusterServiceVersion not found after $TIMEOUT seconds"
-    echo "   Checking subscription status..."
-    oc get subscription advanced-cluster-management -n open-cluster-management -o yaml
+    echo "❌ Error: ACM CSV not found after waiting"
     exit 1
 fi
 
-# Poll CSV phase directly to avoid oc wait hang
-POLL_TIMEOUT=1200   # 20 minutes
-POLL_ELAPSED=0
-POLL_INTERVAL=10
-echo "⏳ Monitoring CSV status until Succeeded (up to $((POLL_TIMEOUT/60)) minutes)..."
-while [ $POLL_ELAPSED -lt $POLL_TIMEOUT ]; do
-    CSV_PHASE=$(oc get csv "$CSV_NAME" -n open-cluster-management -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-    CSV_CONDITION=$(oc get csv "$CSV_NAME" -n open-cluster-management -o jsonpath='{.status.conditions[?(@.type=="InstallSucceeded")].status}' 2>/dev/null || echo "")
-    echo "   CSV phase: ${CSV_PHASE:-unknown} (InstallSucceeded: ${CSV_CONDITION:-unknown}) at ${POLL_ELAPSED}s"
-    if [ "$CSV_PHASE" = "Succeeded" ] || [ "$CSV_CONDITION" = "True" ]; then
-        echo "✅ CSV reached Succeeded, continuing..."
-        break
-    fi
-    sleep $POLL_INTERVAL
-    POLL_ELAPSED=$((POLL_ELAPSED + POLL_INTERVAL))
-done
-
-if [ "$CSV_PHASE" != "Succeeded" ] && [ "$CSV_CONDITION" != "True" ]; then
-    echo "❌ Timeout waiting for CSV to succeed. Current phase: ${CSV_PHASE:-unknown}"
-    echo "   Subscription status:"
-    oc get subscription advanced-cluster-management -n open-cluster-management -o yaml | sed -n '1,120p'
-    echo "   CSV status:"
-    oc get csv "$CSV_NAME" -n open-cluster-management -o yaml | sed -n '1,200p'
+CSV_PHASE=$(oc get csv "$CSV_NAME" -n open-cluster-management -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+echo "   CSV: $CSV_NAME phase: ${CSV_PHASE:-unknown}"
+if [ "$CSV_PHASE" != "Succeeded" ]; then
+    echo "❌ Error: ACM Operator CSV not Succeeded (phase=$CSV_PHASE)"
     exit 1
 fi
 
-echo "✅ ACM Operator installed successfully!"
+echo "✅ ACM Operator installed successfully (CSV Succeeded)"
 
 # Step 4: Create MultiClusterHub
 echo "🌐 Creating MultiClusterHub..."
@@ -116,45 +82,32 @@ EOF
 
 oc apply -f /tmp/multiclusterhub.yaml
 
-# Step 5: Wait for ACM Hub to be ready
-echo "⏳ Waiting for ACM Hub to come online (this may take 10-15 minutes)..."
+# Step 5: Wait for ACM Hub to be ready (simple + longer wait)
+echo "⏳ Waiting 60s for MultiClusterHub to settle..."
+sleep 60
 
-# Poll MultiClusterHub status to check for Running phase
-POLL_TIMEOUT=1800   # 30 minutes
-POLL_ELAPSED=0
-POLL_INTERVAL=15
+# Then check until Running with a simple loop (max 30 minutes)
+MCH_TIMEOUT=1800
+MCH_ELAPSED=0
+MCH_INTERVAL=15
 
-# First check if already Running
-MCH_STATUS=$(oc get multiclusterhub multiclusterhub -n open-cluster-management -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-if [ "$MCH_STATUS" = "Running" ]; then
-    echo "✅ MultiClusterHub is already in Running state, skipping wait"
-else
-    echo "   Monitoring MultiClusterHub status until Running (up to $((POLL_TIMEOUT/60)) minutes)..."
-    while [ $POLL_ELAPSED -lt $POLL_TIMEOUT ]; do
-        # Get MCH phase - should be "Running" when ready
-        MCH_STATUS=$(oc get multiclusterhub multiclusterhub -n open-cluster-management -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-        
-        if [ "$MCH_STATUS" = "Running" ]; then
-            echo "✅ MultiClusterHub is in Running state, continuing..."
-            break
-        fi
-        
-        echo "   Current MultiClusterHub phase: ${MCH_STATUS:-unknown} (elapsed: ${POLL_ELAPSED}s)"
-        sleep $POLL_INTERVAL
-        POLL_ELAPSED=$((POLL_ELAPSED + POLL_INTERVAL))
-    done
-    
-    # Final check
+while [ $MCH_ELAPSED -le $MCH_TIMEOUT ]; do
     MCH_STATUS=$(oc get multiclusterhub multiclusterhub -n open-cluster-management -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-    if [ "$MCH_STATUS" != "Running" ]; then
-        echo "⚠️  Warning: MultiClusterHub status is ${MCH_STATUS:-unknown} (Expected: Running)"
-        echo "   Checking detailed status..."
-        oc get multiclusterhub multiclusterhub -n open-cluster-management -o yaml | grep -A 15 "status:" || true
-        echo "   Continuing anyway - please verify manually if needed"
+    if [ "$MCH_STATUS" = "Running" ]; then
+        echo "✅ ACM Hub is ready (Running)"
+        break
     fi
-fi
+    if [ $MCH_ELAPSED -eq 0 ]; then
+        echo "   Waiting for MultiClusterHub to be Running (current: ${MCH_STATUS:-unknown})"
+    fi
+    sleep $MCH_INTERVAL
+    MCH_ELAPSED=$((MCH_ELAPSED + MCH_INTERVAL))
+done
 
-echo "✅ ACM Hub is ready!"
+if [ "$MCH_STATUS" != "Running" ]; then
+    echo "❌ Error: MultiClusterHub not Running after $((MCH_TIMEOUT/60)) minutes (last phase=$MCH_STATUS)"
+    exit 1
+fi
 
 # Step 6: Get ACM Console URL
 echo "🔗 ACM Console URL:"
