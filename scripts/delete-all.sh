@@ -5,21 +5,31 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-echo "⚠️  WARNING: This will delete EVERYTHING including the management cluster!"
+# Function to get timestamp
+get_timestamp() {
+    date '+%Y-%m-%d %H:%M:%S'
+}
+
+# Function to print message with timestamp
+log_msg() {
+    echo -e "[$(get_timestamp)] $1"
+}
+
+log_msg "⚠️  WARNING: This will delete EVERYTHING including the management cluster!"
 echo ""
 read -p "Are you sure you want to continue? Type 'yes' to confirm: " CONFIRM
 
 if [ "$CONFIRM" != "yes" ]; then
-    echo "Deletion cancelled."
+    log_msg "Deletion cancelled."
     exit 0
 fi
 
 echo ""
-echo "🗑️  Starting full deletion process..."
+log_msg "🗑️  Starting full deletion process..."
 
 # Step 1: Delete hosted cluster first (if it exists)
 echo ""
-echo "Step 1: Deleting hosted cluster..."
+log_msg "Step 1: Deleting hosted cluster..."
 if [ -f "$PROJECT_DIR/config.yaml" ]; then
     bash "$SCRIPT_DIR/delete-hosted-cluster.sh" || echo "   Hosted cluster deletion completed or skipped"
 else
@@ -28,7 +38,7 @@ fi
 
 # Step 2: Delete AWS prerequisites
 echo ""
-echo "Step 2: Cleaning up AWS prerequisites..."
+log_msg "Step 2: Cleaning up AWS prerequisites..."
 
 # Setup AWS credentials
 if [ -f "$PROJECT_DIR/aws-credentials.env" ]; then
@@ -62,7 +72,7 @@ fi
 
 # Step 3: Delete management cluster
 echo ""
-echo "Step 3: Deleting management cluster..."
+log_msg "Step 3: Deleting management cluster..."
 
 # Find kubeconfig
 WORK_DIR="${PWD:-$(pwd)}"
@@ -107,13 +117,13 @@ fi
 
 # Step 4: Clean up local files
 echo ""
-echo "Step 4: Cleaning up local files..."
-echo "   Removing checkpoint file..."
+log_msg "Step 4: Cleaning up local files..."
+log_msg "   Removing checkpoint file..."
 rm -f "$PROJECT_DIR/.checkpoint" || true
 
 echo ""
-echo "✅ Full deletion process completed!"
+log_msg "✅ Full deletion process completed!"
 echo ""
-echo "Note: Some AWS resources may take time to be fully removed."
-echo "Please verify in AWS console that all resources are deleted."
+log_msg "Note: Some AWS resources may take time to be fully removed."
+log_msg "Please verify in AWS console that all resources are deleted."
 
