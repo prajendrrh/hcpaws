@@ -119,30 +119,39 @@ oc apply -f /tmp/multiclusterhub.yaml
 # Step 5: Wait for ACM Hub to be ready
 echo "⏳ Waiting for ACM Hub to come online (this may take 10-15 minutes)..."
 
-# Check if MCH is already in a ready state
-MCH_STATUS=$(oc get multiclusterhub multiclusterhub -n open-cluster-management -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-MCH_AVAILABLE=$(oc get multiclusterhub multiclusterhub -n open-cluster-management -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null || echo "")
-MCH_RUNNING=$(oc get multiclusterhub multiclusterhub -n open-cluster-management -o jsonpath='{.status.conditions[?(@.type=="Progressing")].status}' 2>/dev/null || echo "")
+# Poll MultiClusterHub status to check for Running phase
+POLL_TIMEOUT=1800   # 30 minutes
+POLL_ELAPSED=0
+POLL_INTERVAL=15
 
-if [ "$MCH_STATUS" = "Running" ] || [ "$MCH_AVAILABLE" = "True" ] || [ "$MCH_STATUS" = "Available" ]; then
-    echo "✅ MultiClusterHub is already in ready state ($MCH_STATUS), skipping wait"
+# First check if already Running
+MCH_STATUS=$(oc get multiclusterhub multiclusterhub -n open-cluster-management -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+if [ "$MCH_STATUS" = "Running" ]; then
+    echo "✅ MultiClusterHub is already in Running state, skipping wait"
 else
-    echo "   Current status: $MCH_STATUS (Available: $MCH_AVAILABLE)"
-    # Wait for Available condition or check periodically
-    oc wait --for=condition=Available --timeout=30m multiclusterhub/multiclusterhub -n open-cluster-management || {
-        # If wait fails, check if it's actually running
-        echo "   Wait completed, checking final status..."
+    echo "   Monitoring MultiClusterHub status until Running (up to $((POLL_TIMEOUT/60)) minutes)..."
+    while [ $POLL_ELAPSED -lt $POLL_TIMEOUT ]; do
+        # Get MCH phase - should be "Running" when ready
         MCH_STATUS=$(oc get multiclusterhub multiclusterhub -n open-cluster-management -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
-        MCH_AVAILABLE=$(oc get multiclusterhub multiclusterhub -n open-cluster-management -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null || echo "")
-        if [ "$MCH_STATUS" = "Running" ] || [ "$MCH_AVAILABLE" = "True" ] || [ "$MCH_STATUS" = "Available" ]; then
-            echo "✅ MultiClusterHub is in ready state ($MCH_STATUS), continuing..."
-        else
-            echo "⚠️  Warning: MultiClusterHub status is $MCH_STATUS (Expected: Running/Available)"
-            echo "   Checking detailed status..."
-            oc get multiclusterhub multiclusterhub -n open-cluster-management -o yaml | grep -A 15 "status:"
-            echo "   Continuing anyway - please verify manually if needed"
+        
+        if [ "$MCH_STATUS" = "Running" ]; then
+            echo "✅ MultiClusterHub is in Running state, continuing..."
+            break
         fi
-    }
+        
+        echo "   Current MultiClusterHub phase: ${MCH_STATUS:-unknown} (elapsed: ${POLL_ELAPSED}s)"
+        sleep $POLL_INTERVAL
+        POLL_ELAPSED=$((POLL_ELAPSED + POLL_INTERVAL))
+    done
+    
+    # Final check
+    MCH_STATUS=$(oc get multiclusterhub multiclusterhub -n open-cluster-management -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+    if [ "$MCH_STATUS" != "Running" ]; then
+        echo "⚠️  Warning: MultiClusterHub status is ${MCH_STATUS:-unknown} (Expected: Running)"
+        echo "   Checking detailed status..."
+        oc get multiclusterhub multiclusterhub -n open-cluster-management -o yaml | grep -A 15 "status:" || true
+        echo "   Continuing anyway - please verify manually if needed"
+    fi
 fi
 
 echo "✅ ACM Hub is ready!"
