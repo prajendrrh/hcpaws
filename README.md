@@ -336,7 +336,7 @@ All output messages include timestamps in format `[YYYY-MM-DD HH:MM:SS]` for bet
 For issues or questions:
 - Check OpenShift documentation: https://docs.openshift.com/
 - Check ACM documentation: https://access.redhat.com/documentation/en-us/red_hat_advanced_cluster_management_for_kubernetes/
-- Check HCP documentation: https://hypershift-docs.netlify.app/
+- Check HCP documentation: https://docs.redhat.com/en/documentation/openshift_container_platform/latest/html-single/hosted_control_planes/
 
 ## License
 
