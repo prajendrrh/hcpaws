@@ -15,7 +15,12 @@ MISSING_TOOLS=()
 
 check_tool() {
     if command -v "$1" &> /dev/null; then
-        VERSION=$($1 version 2>/dev/null || $1 --version 2>/dev/null | head -n1 || echo "installed")
+        # For yq, redirect all output to null as it may show usage info
+        if [ "$1" = "yq" ]; then
+            VERSION=$($1 --version 2>/dev/null | head -n1 || echo "installed")
+        else
+            VERSION=$($1 version 2>/dev/null || $1 --version 2>/dev/null | head -n1 || echo "installed")
+        fi
         echo -e "${GREEN}✓${NC} $1 is installed ($VERSION)"
         return 0
     else
