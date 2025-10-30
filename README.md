@@ -29,7 +29,7 @@ Before running the tool, ensure you have:
 
 ```bash
 git clone https://github.com/prajendrrh/hcpaws.git
-cd openshift-acm-hub-installer
+cd hcpaws
 ```
 
 ### 2. Configure the Tool
@@ -177,7 +177,7 @@ Your OpenShift pull secret from Red Hat Console.
 ## Directory Structure
 
 ```
-openshift-acm-hub-installer/
+hcpaws/
 ├── main.sh                    # Main orchestrator script
 ├── config.yaml.example        # Configuration template
 ├── aws-credentials.env.example # AWS credentials template
