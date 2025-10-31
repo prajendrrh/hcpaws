@@ -56,6 +56,55 @@ fi
 log_msg "${GREEN}✓ Prerequisites verified${NC}"
 echo ""
 
+# Pre-flight check: Verify Hypershift operator has created the OIDC ConfigMap
+log_msg "Verifying Hypershift operator readiness..."
+echo ""
+
+# Check if we have kubeconfig access
+if [ -f "installer/auth/kubeconfig" ]; then
+    export KUBECONFIG="$SCRIPT_DIR/installer/auth/kubeconfig"
+elif [ -f "auth/kubeconfig" ]; then
+    export KUBECONFIG="$SCRIPT_DIR/auth/kubeconfig"
+fi
+
+# Check if OIDC ConfigMap exists (created by Hypershift operator when it processes the secret)
+log_msg "  Checking for OIDC ConfigMap in kube-public namespace..."
+log_msg "    (This is created automatically by Hypershift operator)"
+CONFIGMAP_WAIT_MAX=600  # 10 minutes
+CONFIGMAP_WAIT_ELAPSED=0
+CONFIGMAP_WAIT_INTERVAL=10
+
+while [ $CONFIGMAP_WAIT_ELAPSED -lt $CONFIGMAP_WAIT_MAX ]; do
+    if oc get configmap oidc-storage-provider-s3-config -n kube-public &>/dev/null; then
+        echo "   ✅ OIDC ConfigMap exists (found after ${CONFIGMAP_WAIT_ELAPSED}s)"
+        break
+    fi
+    
+    if [ $CONFIGMAP_WAIT_ELAPSED -eq 0 ]; then
+        echo "   ⏳ Waiting for OIDC ConfigMap to be created by Hypershift operator..."
+    fi
+    
+    sleep $CONFIGMAP_WAIT_INTERVAL
+    CONFIGMAP_WAIT_ELAPSED=$((CONFIGMAP_WAIT_ELAPSED + CONFIGMAP_WAIT_INTERVAL))
+    
+    if [ $((CONFIGMAP_WAIT_ELAPSED % 30)) -eq 0 ]; then
+        echo "      Still waiting... (${CONFIGMAP_WAIT_ELAPSED}s elapsed)"
+    fi
+done
+
+if ! oc get configmap oidc-storage-provider-s3-config -n kube-public &>/dev/null; then
+    echo "   ⚠️  Warning: OIDC ConfigMap not found after $((CONFIGMAP_WAIT_MAX/60)) minutes"
+    echo "      The Hypershift operator should create this when it processes the OIDC secret"
+    echo "      This may cause the first cluster creation attempt to fail"
+    echo "      Continuing anyway - hcp CLI may retry or create it..."
+else
+    echo "   ✅ OIDC ConfigMap verified - ready for cluster creation"
+fi
+
+echo ""
+log_msg "${GREEN}✓ All readiness checks completed${NC}"
+echo ""
+
 # Step 7: Create hosted cluster
 log_msg "Creating hosted cluster..."
 log_msg "⚠️  This will take 15-20 minutes. Please be patient..."
