@@ -79,5 +79,5 @@ log_msg "${GREEN}Management (Hub) Cluster is ready${NC}"
 log_msg "${GREEN}========================================${NC}"
 echo ""
 log_msg "You can now proceed to Module 2: Install ACM"
-log_msg "Run: bash module-2-install-acm.sh"
+log_msg "Run: bash acm.sh"
 

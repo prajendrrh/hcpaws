@@ -66,5 +66,5 @@ log_msg "⚠️  IMPORTANT: Wait a few minutes before proceeding to Module 4"
 log_msg "   This allows AWS IAM policies and ConfigMaps to fully propagate"
 log_msg ""
 log_msg "You can now proceed to Module 4: Create Hosted Cluster"
-log_msg "Run: bash module-4-create-hosted-cluster.sh"
+log_msg "Run: bash hosted.sh"
 

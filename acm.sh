@@ -56,5 +56,5 @@ log_msg "${GREEN}ACM is installed and ready${NC}"
 log_msg "${GREEN}========================================${NC}"
 echo ""
 log_msg "You can now proceed to Module 3: Setup Prerequisites for Hosted Cluster"
-log_msg "Run: bash module-3-setup-hosted-prerequisites.sh"
+log_msg "Run: bash prereq.sh"
 
