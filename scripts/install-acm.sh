@@ -113,35 +113,12 @@ fi
 echo "🔗 ACM Console URL:"
 oc get route -n open-cluster-management multicloud-console -o jsonpath='{.spec.host}' 2>/dev/null || echo "Console route not yet available"
 
-# Step 7: Verify/Install Hypershift Add-on (if not already installed)
-echo "🔍 Checking Hypershift Add-on status..."
-if oc get managedclusteraddon hypershift-addon -n local-cluster &>/dev/null; then
-    echo "   ✅ Hypershift add-on already exists"
-    ADDON_STATUS=$(oc get managedclusteraddon hypershift-addon -n local-cluster -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null || echo "")
-    if [ "$ADDON_STATUS" = "True" ]; then
-        echo "   ✅ Hypershift add-on is Available"
-    else
-        echo "   ⏳ Hypershift add-on exists but not yet Available (status: ${ADDON_STATUS:-unknown})"
-        echo "      This is normal - it will become available as ACM finishes setup"
-    fi
-else
-    echo "🚀 Installing Hypershift Add-on..."
-    cat > /tmp/hypershift-addon.yaml <<EOF
-apiVersion: addon.open-cluster-management.io/v1alpha1
-kind: ManagedClusterAddOn
-metadata:
-  name: hypershift-addon
-  namespace: local-cluster
-spec:
-  installNamespace: open-cluster-management-agent-addon
-EOF
-    oc apply -f /tmp/hypershift-addon.yaml
-    echo "   ✅ Hypershift add-on created"
-    echo "   ⏳ It may take a few minutes for the add-on to become Available"
-fi
-
+echo ""
 echo "✅ ACM installation completed!"
+echo ""
+echo "ℹ️  Note: Hypershift add-on is automatically installed by MultiClusterHub"
+echo "   It may take a few minutes to become available"
 
 # Cleanup temp files
-rm -f /tmp/acm-operator-subscription.yaml /tmp/multiclusterhub.yaml /tmp/hypershift-addon.yaml
+rm -f /tmp/acm-operator-subscription.yaml /tmp/multiclusterhub.yaml
 
