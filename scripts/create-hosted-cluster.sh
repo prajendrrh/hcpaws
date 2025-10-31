@@ -188,4 +188,4 @@ if [ $EXIT_CODE -ne 0 ]; then
 fi
 
 echo "✅ Hosted cluster creation completed!"
-echo "📝 Full creation log saved to: $HOSTED_CLUSTուՙSTER_LOG"
+echo "📝 Full creation log saved to: $HOSTED_CLUSTER_LOG"
