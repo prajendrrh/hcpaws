@@ -369,10 +369,66 @@ cat > "$PROJECT_DIR/tmp/hcp_policy.json" <<'POLICYEOF'
 }
 POLICYEOF
 
+echo "   Attaching policy to IAM role..."
 aws iam put-role-policy \
     --role-name "$IAM_ROLE_NAME" \
     --policy-name hcp-cli-policy \
     --policy-document file://"$PROJECT_DIR/tmp/hcp_policy.json"
+
+echo "   ✅ Policy attached successfully"
+
+# Verify the policy was attached and contains required permissions
+echo "   Verifying policy permissions..."
+ATTACHED_POLICY=$(aws iam get-role-policy --role-name "$IAM_ROLE_NAME" --policy-name hcp-cli-policy --query 'PolicyDocument' --output json 2>/dev/null || echo "")
+if echo "$ATTACHED_POLICY" | jq -e '.Statement[] | select(.Sid=="EC2") | .Action[] | select(. == "ec2:DescribeVpcs")' >/dev/null 2>&1; then
+    echo "   ✅ Policy contains ec2:DescribeVpcs permission"
+else
+    echo "   ⚠️  Warning: Could not verify ec2:DescribeVpcs in policy"
+fi
+
+# Wait for IAM policy propagation by actually testing a permission
+# This is critical: AWS IAM policies can take 5-15 seconds to propagate
+echo "   ⏳ Verifying IAM policy permissions are active (AWS IAM propagation)..."
+echo "      This ensures the policy has fully propagated before cluster creation"
+POLICY_WAIT_MAX=45  # Maximum 45 seconds (AWS recommends up to 15s, but we allow more)
+POLICY_WAIT_ELAPSED=0
+POLICY_WAIT_INTERVAL=3
+
+POLICY_VERIFIED=false
+while [ $POLICY_WAIT_ELAPSED -lt $POLICY_WAIT_MAX ]; do
+    # Try to assume the role and perform a test action (describe VPCs)
+    ASSUMED_CREDS=$(aws sts assume-role --role-arn "$ROLE_ARN" --role-session-name "policy-verification-check" --duration-seconds 900 --output json 2>/dev/null || echo "")
+    if [ -n "$ASSUMED_CREDS" ]; then
+        ACCESS_KEY=$(echo "$ASSUMED_CREDS" | jq -r '.Credentials.AccessKeyId' 2>/dev/null || echo "")
+        SECRET_KEY=$(echo "$ASSUMED_CREDS" | jq -r '.Credentials.SecretAccessKey' 2>/dev/null || echo "")
+        SESSION_TOKEN=$(echo "$ASSUMED_CREDS" | jq -r '.Credentials.SessionToken' 2>/dev/null || echo "")
+        
+        # Verify we got valid credentials
+        if [ -n "$ACCESS_KEY" ] && [ "$ACCESS_KEY" != "null" ] && [ -n "$SECRET_KEY" ] && [ "$SECRET_KEY" != "null" ]; then
+            # Try to list VPCs using the assumed role credentials with explicit region
+            if AWS_ACCESS_KEY_ID="$ACCESS_KEY" AWS_SECRET_ACCESS_KEY="$SECRET_KEY" AWS_SESSION_TOKEN="$SESSION_TOKEN" AWS_REGION="$HOSTED_REGION" \
+               aws ec2 describe-vpcs --region "$HOSTED_REGION" --max-items 1 &>/dev/null 2>&1; then
+                echo "   ✅ IAM policy permissions are active (verified after ${POLICY_WAIT_ELAPSED}s)"
+                POLICY_VERIFIED=true
+                break
+            fi
+        fi
+    fi
+    
+    if [ $POLICY_WAIT_ELAPSED -eq 0 ]; then
+        echo "      Waiting for policy to propagate..."
+    fi
+    sleep $POLICY_WAIT_INTERVAL
+    POLICY_WAIT_ELAPSED=$((POLICY_WAIT_ELAPSED + POLICY_WAIT_INTERVAL))
+done
+
+if [ "$POLICY_VERIFIED" = "false" ]; then
+    echo "   ⚠️  Warning: Could not verify policy permissions after ${POLICY_WAIT_ELAPSED}s"
+    echo "      AWS IAM propagation can take up to 15 seconds, sometimes longer"
+    echo "      Continuing anyway - if cluster creation fails, wait a few seconds and retry"
+else
+    echo "   ✅ Policy verification successful - ready for cluster creation"
+fi
 
 # Step 11: Get STS session token
 echo "🎫 Getting STS session token..."

@@ -161,11 +161,13 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ $EXIT_CODE -ne 0 ]; do
     EXIT_CODE=$?
     echo ""
     
-    # Check if failure is due to IAM/AssumeRole (retryable error)
+    # Check if failure is due to IAM/permissions (retryable errors)
     if [ $EXIT_CODE -ne 0 ]; then
         if grep -q "AccessDenied.*sts:AssumeRole" "$HOSTED_CLUSTER_LOG" 2>/dev/null || \
-           grep -q "is not authorized to perform.*sts:AssumeRole" "$HOSTED_CLUSTER_LOG" 2>/dev/null; then
-            echo "   ⚠️  Failed with AssumeRole error - likely IAM propagation delay"
+           grep -q "is not authorized to perform.*sts:AssumeRole" "$HOSTED_CLUSTER_LOG" 2>/dev/null || \
+           grep -q "UnauthorizedOperation" "$HOSTED_CLUSTER_LOG" 2>/dev/null || \
+           grep -q "is not authorized to perform this operation" "$HOSTED_CLUSTER_LOG" 2>/dev/null; then
+            echo "   ⚠️  Failed with IAM/permissions error - likely IAM policy propagation delay"
             RETRY_COUNT=$((RETRY_COUNT + 1))
             if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
                 echo "   ❌ Max retries reached. This may be a permissions issue."
