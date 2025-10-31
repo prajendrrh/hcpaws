@@ -112,40 +112,70 @@ echo "📝 Hosted cluster creation logs will be saved to: $HOSTED_CLUSTER_LOG"
 echo "   You can monitor progress with: tail -f $HOSTED_CLUSTER_LOG"
 echo "   Using Role ARN: $ROLE_ARN"
 echo "   Using STS Creds: $STS_CREDS_FILE"
-echo -n "   Creating"
 
-# Run hcp command in background and redirect output to log file
-hcp create cluster aws \
-    --name "$CLUSTER_NAME" \
-    --infra-id "$INFRA_ID" \
-    --base-domain "$BASE_DOMAIN" \
-    --sts-creds "$STS_CREDS_FILE" \
-    --pull-secret "$PROJECT_DIR/$PULL_SECRET_FILE" \
-    --region "$REGION" \
-    --zones "$ZONES" \
-    --generate-ssh \
-    --node-pool-replicas "$NODE_POOL_REPLICAS" \
-    --namespace "$NAMESPACE" \
-    --role-arn "$ROLE_ARN" \
-    --release-image "$RELEASE_IMAGE" > "$HOSTED_CLUSTER_LOG" 2>&1 &
-HCP_PID=$!
+# Retry logic for IAM propagation delays (AWS IAM can take time to propagate)
+MAX_RETRIES=3
+RETRY_DELAY=10
+RETRY_COUNT=0
+EXIT_CODE=1
 
-# Show progress while waiting
-COUNTER=0
-while kill -0 $HCP_PID 2>/dev/null; do
-    sleep 60
-    COUNTER=$((COUNTER + 1))
-    echo -n "."
-    # Show message every 5 minutes
-    if [ $((COUNTER % 5)) -eq 0 ]; then
-        echo ""
-        echo "   Still creating... ($((COUNTER)) minutes elapsed - check $HOSTED_CLUSTER_LOG for details)"
-        echo -n "   Creating"
+while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ $EXIT_CODE -ne 0 ]; do
+    if [ $RETRY_COUNT -gt 0 ]; then
+        echo "   Retry attempt $RETRY_COUNT/$((MAX_RETRIES-1)) after ${RETRY_DELAY}s delay (IAM propagation)..."
+        sleep $RETRY_DELAY
+        RETRY_DELAY=$((RETRY_DELAY * 2))  # Exponential backoff
+    fi
+    
+    echo -n "   Creating"
+    
+    # Run hcp command in background and redirect output to log file
+    hcp create cluster aws \
+        --name "$CLUSTER_NAME" \
+        --infra-id "$INFRA_ID" \
+        --base-domain "$BASE_DOMAIN" \
+        --sts-creds "$STS_CREDS_FILE" \
+        --pull-secret "$PROJECT_DIR/$PULL_SECRET_FILE" \
+        --region "$REGION" \
+        --zones "$ZONES" \
+        --generate-ssh \
+        --node-pool-replicas "$NODE_POOL_REPLICAS" \
+        --namespace "$NAMESPACE" \
+        --role-arn "$ROLE_ARN" \
+        --release-image "$RELEASE_IMAGE" > "$HOSTED_CLUSTER_LOG" 2>&1 &
+    HCP_PID=$!
+    
+    # Show progress while waiting
+    COUNTER=0
+    while kill -0 $HCP_PID 2>/dev/null; do
+        sleep 60
+        COUNTER=$((COUNTER + 1))
+        echo -n "."
+        # Show message every 5 minutes
+        if [ $((COUNTER % 5)) -eq 0 ]; then
+            echo ""
+            echo "   Still creating... ($((COUNTER)) minutes elapsed - check $HOSTED_CLUSTER_LOG for details)"
+            echo -n "   Creating"
+        fi
+    done
+    wait $HCP_PID
+    EXIT_CODE=$?
+    echo ""
+    
+    # Check if failure is due to IAM/AssumeRole (retryable error)
+    if [ $EXIT_CODE -ne 0 ]; then
+        if grep -q "AccessDenied.*sts:AssumeRole" "$HOSTED_CLUSTER_LOG" 2>/dev/null || \
+           grep -q "is not authorized to perform.*sts:AssumeRole" "$HOSTED_CLUSTER_LOG" 2>/dev/null; then
+            echo "   ⚠️  Failed with AssumeRole error - likely IAM propagation delay"
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+                echo "   ❌ Max retries reached. This may be a permissions issue."
+            fi
+        else
+            # Non-retryable error, exit immediately
+            break
+        fi
     fi
 done
-wait $HCP_PID
-EXIT_CODE=$?
-echo ""
 
 # Check if creation was successful
 if [ $EXIT_CODE -ne 0 ]; then

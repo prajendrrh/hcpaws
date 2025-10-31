@@ -215,6 +215,26 @@ ROLE_ARN=$(aws iam create-role \
 
 echo "  Role ARN: $ROLE_ARN"
 
+# Step 9.5: Wait for IAM role trust policy to propagate (AWS IAM propagation delay)
+echo "⏳ Waiting for IAM role to become assumable (AWS IAM propagation)..."
+IAM_WAIT_MAX=30  # Maximum 30 seconds
+IAM_WAIT_ELAPSED=0
+IAM_WAIT_INTERVAL=2
+
+while [ $IAM_WAIT_ELAPSED -lt $IAM_WAIT_MAX ]; do
+    if aws sts assume-role --role-arn "$ROLE_ARN" --role-session-name "iam-propagation-check" --duration-seconds 900 &>/dev/null; then
+        echo "  ✅ IAM role is ready (propagated after ${IAM_WAIT_ELAPSED}s)"
+        break
+    fi
+    sleep $IAM_WAIT_INTERVAL
+    IAM_WAIT_ELAPSED=$((IAM_WAIT_ELAPSED + IAM_WAIT_INTERVAL))
+done
+
+if [ $IAM_WAIT_ELAPSED -ge $IAM_WAIT_MAX ]; then
+    echo "  ⚠️  Warning: Could not verify role assumption after ${IAM_WAIT_MAX}s"
+    echo "     This may be okay - AWS IAM propagation can take longer. Continuing..."
+fi
+
 # Step 10: Create IAM role policy
 echo "📋 Creating IAM role policy..."
 cat > "$PROJECT_DIR/tmp/hcp_policy.json" <<'POLICYEOF'
