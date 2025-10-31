@@ -187,6 +187,35 @@ else
     echo "❌ Warning: Secret creation may have failed"
 fi
 
+# Step 7.5: Create OIDC ConfigMap in kube-public namespace (created in advance)
+# The Hypershift operator will use this ConfigMap for OIDC provider configuration
+echo "📋 Creating OIDC storage provider ConfigMap in kube-public namespace..."
+echo "   (Creating in advance to avoid waiting for operator to process secret)"
+
+# Ensure kube-public namespace exists (it should by default, but check anyway)
+oc get namespace kube-public &>/dev/null || oc create namespace kube-public
+
+# Delete existing ConfigMap if it exists to ensure fresh configuration
+oc delete configmap oidc-storage-provider-s3-config -n kube-public &>/dev/null || echo "   No existing ConfigMap found"
+
+# Create the ConfigMap with S3 bucket configuration
+echo "   Creating ConfigMap with bucket and region..."
+oc create configmap oidc-storage-provider-s3-config \
+    -n kube-public \
+    --from-literal=bucket="$BUCKET_NAME" \
+    --from-literal=region="$HOSTED_REGION"
+
+echo "   ✅ ConfigMap created successfully in kube-public namespace"
+echo "   Bucket: $BUCKET_NAME"
+echo "   Region: $HOSTED_REGION"
+
+# Verify ConfigMap was created
+if oc get configmap oidc-storage-provider-s3-config -n kube-public &>/dev/null; then
+    echo "   ConfigMap verified in cluster"
+else
+    echo "❌ Warning: ConfigMap creation may have failed"
+fi
+
 # Step 8: Create IAM role trust policy
 echo "🔐 Creating IAM role trust policy..."
 cat > "$PROJECT_DIR/tmp/iam_role.json" <<EOF
