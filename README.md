@@ -215,10 +215,15 @@ Your OpenShift pull secret from Red Hat Console.
 
 ```
 hcpaws/
-├── main.sh                    # Main orchestrator script
+├── main.sh                    # Main orchestrator script (full automated run)
+├── hub.sh                     # Module 1: Create management (hub) cluster
+├── acm.sh                     # Module 2: Install ACM
+├── prereq.sh                  # Module 3: Setup prerequisites for hosted cluster
+├── hosted.sh                  # Module 4: Create hosted cluster
 ├── config.yaml.example        # Configuration template
 ├── aws-credentials.env.example # AWS credentials template
 ├── pull-secret.txt.example    # Pull secret template
+├── TESTING.md                 # Comprehensive testing guide
 ├── .gitignore
 ├── README.md
 ├── scripts/
@@ -341,7 +346,7 @@ The installation process consists of 7 steps:
 ### Step 5: Install ACM
 - Installs Advanced Cluster Management operator
 - Creates MultiClusterHub instance
-- Installs Hypershift add-on
+- Hypershift add-on is automatically installed by MultiClusterHub
 - **Duration: 10-15 minutes**
 
 ### Step 6: Setup AWS Prerequisites
