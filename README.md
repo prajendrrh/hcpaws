@@ -56,9 +56,39 @@ chmod +x main.sh scripts/*.sh
 
 ## Usage
 
-### Create Installation (Full Workflow)
+### Option 1: Modular Installation (Recommended)
 
-Run the complete installation workflow:
+The installation is split into 4 modules that can be run independently. This approach allows natural time gaps between steps and makes it easier to debug issues:
+
+```bash
+# Module 1: Create Management (Hub) Cluster
+bash hub.sh
+# ~45 minutes - Creates OpenShift hub cluster
+
+# Module 2: Install ACM
+bash acm.sh
+# ~15 minutes - Installs Advanced Cluster Management
+
+# Module 3: Setup Prerequisites for Hosted Cluster
+bash prereq.sh
+# ~2-5 minutes - Creates S3 bucket, IAM role, OIDC secret, STS credentials
+
+# Module 4: Create Hosted Cluster
+bash hosted.sh
+# ~20 minutes - Creates hosted cluster using hcp CLI
+```
+
+**Benefits of modular approach:**
+- Natural time gaps help AWS IAM policies propagate
+- Each module can be run independently for debugging
+- Easier to identify which step has issues
+- Allows manual verification between steps
+
+**Total time: ~1.5-2 hours** (including natural delays between modules)
+
+### Option 2: Full Automated Installation
+
+Run the complete installation workflow in one go:
 
 ```bash
 ./main.sh
@@ -95,9 +125,9 @@ The script uses a checkpoint file (`.checkpoint`) to track progress. It will ski
 
 **Note:** The checkpoint file is automatically created and updated during installation, and is removed upon successful completion.
 
-### Run Individual Steps
+### Run Individual Scripts
 
-You can also run individual steps manually:
+You can also run individual scripts manually:
 
 ```bash
 # Step 1: Check prerequisites
@@ -123,9 +153,11 @@ cd installer  # Must be run from directory containing auth/kubeconfig
 ./scripts/create-hosted-cluster.sh
 ```
 
-### Delete Hosted Cluster
+### Delete Operations
 
-To delete a hosted cluster:
+#### Delete Hosted Cluster Only
+
+To delete only the hosted cluster (keeps hub cluster and ACM):
 
 ```bash
 ./scripts/delete-hosted-cluster.sh
@@ -134,13 +166,14 @@ To delete a hosted cluster:
 This will:
 - Delete the hosted cluster using hcp CLI
 - Remove cluster resources from ACM
-- Clean up AWS resources associated with the hosted cluster
+- Clean up AWS resources associated with the hosted cluster (VPCs, subnets, load balancers, etc.)
+- **Note:** Does NOT delete the hub cluster, ACM, S3 bucket, or IAM role
 
-### Delete All Resources
+#### Delete All Resources
 
-To delete everything (hub cluster and hosted cluster):
+To delete everything (hub cluster, hosted cluster, and all AWS prerequisites):
 
-**⚠️ Warning:** This will delete the hub cluster and all hosted clusters!
+**⚠️ Warning:** This will delete the hub cluster, all hosted clusters, and AWS resources!
 
 ```bash
 ./scripts/delete-all.sh
@@ -148,8 +181,12 @@ To delete everything (hub cluster and hosted cluster):
 
 This will:
 - Delete all hosted clusters
-- Delete the hub cluster (if using OpenShift installer-managed cluster)
-- Clean up associated AWS resources
+- Delete the hub cluster (using openshift-install destroy)
+- Delete the S3 bucket for OIDC provider
+- Delete the IAM role and policies
+- Clean up all associated AWS resources
+
+**Output:** All deletion operations are logged to `cluster-destruction.log` in the installation directory.
 
 ## Configuration
 
@@ -256,6 +293,25 @@ export KUBECONFIG=$(pwd)/auth/kubeconfig
 - Ensure S3 bucket exists and is accessible
 - Review hcp CLI output for errors
 
+## Installation Methods Comparison
+
+### Modular Scripts (hub.sh, acm.sh, prereq.sh, hosted.sh)
+- **Best for:** First-time setup, debugging, learning
+- **Advantages:**
+  - Natural time gaps between modules help AWS IAM propagation
+  - Easy to debug which step failed
+  - Can verify each step before proceeding
+  - More reliable for first-time runs
+- **Usage:** Run each module sequentially with time between steps
+
+### Full Automated (main.sh)
+- **Best for:** Repeatable automated deployments
+- **Advantages:**
+  - Single command for complete installation
+  - Resume capability if interrupted
+  - Checkpoint system tracks progress
+- **Note:** May require retries due to timing issues on first run
+
 ## Installation Steps Detail
 
 The installation process consists of 7 steps:
@@ -289,12 +345,16 @@ The installation process consists of 7 steps:
 - **Duration: 10-15 minutes**
 
 ### Step 6: Setup AWS Prerequisites
+- Waits for Hypershift operator to be running
 - Creates S3 bucket for OIDC provider
 - Sets up bucket policies
 - Creates IAM role with necessary permissions
+- Creates Kubernetes secret for hypershift operator (after operator is ready)
+- Waits for operator to create OIDC ConfigMap automatically
 - Generates STS credentials (`sts-creds.json`)
-- Creates Kubernetes secret for hypershift operator
+- Verifies IAM policy permissions are active
 - **Note:** Must be run from directory containing `auth/kubeconfig`
+- **Timing:** Waits for operator readiness to ensure secret is processed immediately
 
 ### Step 7: Create Hosted Cluster
 - Uses `hcp` CLI to create hosted cluster on AWS
