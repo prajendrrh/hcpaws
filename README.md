@@ -125,34 +125,6 @@ The script uses a checkpoint file (`.checkpoint`) to track progress. It will ski
 
 **Note:** The checkpoint file is automatically created and updated during installation, and is removed upon successful completion.
 
-### Run Individual Scripts
-
-You can also run individual scripts manually:
-
-```bash
-# Step 1: Check prerequisites
-./scripts/check-prerequisites.sh
-
-# Step 2: Generate install-config.yaml
-./scripts/generate-install-config.sh
-
-# Step 3: Install hub cluster (30-60 minutes)
-./scripts/install-hub-cluster.sh
-
-# Step 4: Verify cluster is ready
-./scripts/verify-cluster-ready.sh
-
-# Step 5: Install ACM (10-15 minutes)
-./scripts/install-acm.sh
-
-# Step 6: Setup AWS prerequisites
-cd installer  # Must be run from directory containing auth/kubeconfig
-../scripts/setup-aws-prerequisites.sh
-
-# Step 7: Create hosted cluster (15-20 minutes)
-./scripts/create-hosted-cluster.sh
-```
-
 ### Delete Operations
 
 #### Delete Hosted Cluster Only
@@ -223,7 +195,6 @@ hcpaws/
 ├── config.yaml.example        # Configuration template
 ├── aws-credentials.env.example # AWS credentials template
 ├── pull-secret.txt.example    # Pull secret template
-├── TESTING.md                 # Comprehensive testing guide
 ├── .gitignore
 ├── README.md
 ├── scripts/
