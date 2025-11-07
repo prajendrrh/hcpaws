@@ -148,7 +148,41 @@ fi
 
 export KUBECONFIG="$WORK_DIR/auth/kubeconfig"
 
-# Step 7: Create secret for hypershift operator
+# Step 7: Wait for Hypershift operator to be running before creating secret
+echo "🔍 Checking if Hypershift operator is running..."
+echo "   (Secret should only be created after operator is ready to process it)"
+
+HYPERSHIFT_READY=false
+HYPERSHIFT_WAIT_MAX=600  # 10 minutes
+HYPERSHIFT_WAIT_ELAPSED=0
+HYPERSHIFT_WAIT_INTERVAL=10
+
+while [ $HYPERSHIFT_WAIT_ELAPSED -lt $HYPERSHIFT_WAIT_MAX ]; do
+    if oc get pods -n hypershift 2>/dev/null | grep -q "operator.*Running"; then
+        echo "   ✅ Hypershift operator is running (found after ${HYPERSHIFT_WAIT_ELAPSED}s)"
+        HYPERSHIFT_READY=true
+        break
+    fi
+    
+    if [ $HYPERSHIFT_WAIT_ELAPSED -eq 0 ]; then
+        echo "   ⏳ Waiting for Hypershift operator to be running..."
+        echo "      (This ensures the operator can process the secret immediately)"
+    fi
+    
+    sleep $HYPERSHIFT_WAIT_INTERVAL
+    HYPERSHIFT_WAIT_ELAPSED=$((HYPERSHIFT_WAIT_ELAPSED + HYPERSHIFT_WAIT_INTERVAL))
+    
+    if [ $((HYPERSHIFT_WAIT_ELAPSED % 30)) -eq 0 ]; then
+        echo "      Still waiting... (${HYPERSHIFT_WAIT_ELAPSED}s elapsed)"
+    fi
+done
+
+if [ "$HYPERSHIFT_READY" = "false" ]; then
+    echo "   ⚠️  Warning: Hypershift operator not running after $((HYPERSHIFT_WAIT_MAX/60)) minutes"
+    echo "      Continuing anyway - operator may start after secret is created"
+fi
+
+# Step 7.5: Create secret for hypershift operator
 echo "🔐 Creating hypershift operator OIDC provider secret..."
 
 # Delete existing secret if it exists (to ensure fresh credentials)
@@ -183,8 +217,47 @@ echo "   ✅ Secret created successfully in local-cluster namespace"
 # Verify secret was created and show basic info
 if oc get secret hypershift-operator-oidc-provider-s3-credentials -n local-cluster &>/dev/null; then
     echo "   Secret verified in cluster"
+    # Label the secret for backup (as shown in OpenShift CI script)
+    oc label secret hypershift-operator-oidc-provider-s3-credentials -n local-cluster cluster.open-cluster-management.io/backup=true --overwrite 2>/dev/null || true
 else
     echo "❌ Warning: Secret creation may have failed"
+fi
+
+# Step 7.6: Wait for ConfigMap to be created automatically by Hypershift operator
+# Based on OpenShift CI script: https://github.com/openshift/release/blob/ef2d5b56262a8d44f2564da22732fa4bc7a48b78/ci-operator/step-registry/hypershift/mce/install/hypershift-mce-install-commands.sh#L244
+echo "⏳ Waiting for OIDC ConfigMap to be created by Hypershift operator..."
+echo "   (The operator creates this automatically when processing the secret)"
+
+CONFIGMAP_READY=false
+CONFIGMAP_WAIT_MAX=300  # 5 minutes (OpenShift CI waits up to 5 minutes)
+CONFIGMAP_WAIT_ELAPSED=0
+CONFIGMAP_WAIT_INTERVAL=10
+
+while [ $CONFIGMAP_WAIT_ELAPSED -lt $CONFIGMAP_WAIT_MAX ]; do
+    if oc get configmap oidc-storage-provider-s3-config -n kube-public &>/dev/null; then
+        echo "   ✅ OIDC ConfigMap created by operator (found after ${CONFIGMAP_WAIT_ELAPSED}s)"
+        CONFIGMAP_READY=true
+        break
+    fi
+    
+    if [ $CONFIGMAP_WAIT_ELAPSED -eq 0 ]; then
+        echo "   Waiting for operator to process secret and create ConfigMap..."
+    fi
+    
+    sleep $CONFIGMAP_WAIT_INTERVAL
+    CONFIGMAP_WAIT_ELAPSED=$((CONFIGMAP_WAIT_ELAPSED + CONFIGMAP_WAIT_INTERVAL))
+    
+    if [ $((CONFIGMAP_WAIT_ELAPSED % 30)) -eq 0 ]; then
+        echo "      Still waiting... (${CONFIGMAP_WAIT_ELAPSED}s elapsed)"
+    fi
+done
+
+if [ "$CONFIGMAP_READY" = "false" ]; then
+    echo "   ⚠️  Warning: ConfigMap not created after $((CONFIGMAP_WAIT_MAX/60)) minutes"
+    echo "      The operator should create it automatically - this may cause issues"
+    echo "      Continuing anyway - hcp CLI may still work with explicit bucket parameter"
+else
+    echo "   ✅ ConfigMap ready - hosting service cluster configured"
 fi
 
 
